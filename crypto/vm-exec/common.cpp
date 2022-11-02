@@ -136,7 +136,9 @@ td::Result<std::string> stack_entry_to_json(vm::StackEntry se) {
       res.append(item);
       res.append(",");
     }
-    res = res.substr(0, res.length() - 1);
+    if (res[res.length()-1] == ',') {
+      res.pop_back();
+    }
     res += "] }";
 
     return res;
