@@ -9,7 +9,6 @@
 #include "tvm-emulator.hpp"
 #include "crypto/vm/stack.hpp"
 
-
 vm::StackEntry from_emulator_api(td::JsonValue& entry) {
   auto& object = entry.get_object();
   CHECK(object.size() == 2);
@@ -149,9 +148,7 @@ const char *success_response(std::string&& transaction, std::string&& new_shard_
   json_obj("shard_account", std::move(new_shard_account));
   json_obj("vm_log", std::move(vm_log));
   json_obj.leave();
-  auto json_response = jb.string_builder().as_cslice().str();
-  auto heap_response = new std::string(json_response);
-  return heap_response->c_str();
+  return strdup(jb.string_builder().as_cslice().c_str());
 }
 
 const char *error_response(std::string&& error) {
@@ -160,9 +157,7 @@ const char *error_response(std::string&& error) {
   json_obj("success", td::JsonFalse());
   json_obj("error", std::move(error));
   json_obj.leave();
-  auto json_response = jb.string_builder().as_cslice().str();
-  auto heap_response = new std::string(json_response);
-  return heap_response->c_str();
+  return strdup(jb.string_builder().as_cslice().c_str());
 }
 
 const char *external_not_accepted_response(std::string&& vm_log, int vm_exit_code) {
@@ -173,50 +168,39 @@ const char *external_not_accepted_response(std::string&& vm_log, int vm_exit_cod
   json_obj("vm_log", std::move(vm_log));
   json_obj("vm_exit_code", vm_exit_code);
   json_obj.leave();
-  auto json_response = jb.string_builder().as_cslice().str();
-  auto heap_response = new std::string(json_response);
-  return heap_response->c_str();
+  return strdup(jb.string_builder().as_cslice().c_str());
 }
 
 #define ERROR_RESPONSE(error) return error_response(error)
 
-void *transaction_emulator_create(const char *config_params_boc, const char *shardchain_libs_boc, int vm_log_verbosity) {
-  auto config_params_decoded = td::base64_decode(td::Slice(config_params_boc));
+td::Result<block::Config> decode_config(const char* config_boc) {
+  auto config_params_decoded = td::base64_decode(td::Slice(config_boc));
   if (config_params_decoded.is_error()) {
-    LOG(ERROR) << "Can't decode base64 config params boc: " << config_params_decoded.move_as_error();
-    return nullptr;
+    return config_params_decoded.move_as_error_prefix("Can't decode base64 config params boc: ");
   }
   auto config_params_cell = vm::std_boc_deserialize(config_params_decoded.move_as_ok());
   if (config_params_cell.is_error()) {
-    LOG(ERROR) << "Can't deserialize config params boc: " << config_params_cell.move_as_error();
-    return nullptr;
+    return config_params_cell.move_as_error_prefix("Can't deserialize config params boc: ");
   }
   auto global_config = block::Config(config_params_cell.move_as_ok(), td::Bits256::zero(), block::Config::needWorkchainInfo | block::Config::needSpecialSmc);
   auto unpack_res = global_config.unpack();
   if (unpack_res.is_error()) {
-    LOG(ERROR) << "Can't unpack config params";
+    return unpack_res.move_as_error_prefix("Can't unpack config params: ");
+  }
+  return global_config;
+}
+
+void *transaction_emulator_create(const char *config_params_boc, int vm_log_verbosity) {
+  auto global_config_res = decode_config(config_params_boc);
+  if (global_config_res.is_error()) {
+    LOG(ERROR) << global_config_res.move_as_error().message();
     return nullptr;
   }
 
-  vm::Dictionary shardchain_libs{256};
-  if (shardchain_libs_boc != nullptr) {
-    auto shardchain_libs_decoded = td::base64_decode(td::Slice(shardchain_libs_boc));
-    if (shardchain_libs_decoded.is_error()) {
-      LOG(ERROR) << "Can't decode base64 shardchain libraries boc: " << shardchain_libs_decoded.move_as_error();
-      return nullptr;
-    }
-    auto shardchain_libs_cell = vm::std_boc_deserialize(shardchain_libs_decoded.move_as_ok());
-    if (shardchain_libs_cell.is_error()) {
-      LOG(ERROR) << "Can't deserialize shardchain libraries boc: " << shardchain_libs_cell.move_as_error();
-      return nullptr;
-    }
-    shardchain_libs = vm::Dictionary(shardchain_libs_cell.move_as_ok(), 256);
-  }
-
-  return new emulator::TransactionEmulator(std::move(global_config), std::move(shardchain_libs), vm_log_verbosity);
+  return new emulator::TransactionEmulator(global_config_res.move_as_ok(), vm_log_verbosity);
 }
 
-const char *transaction_emulator_emulate_transaction(void *transaction_emulator, const char *shard_account_boc, const char *message_boc) {
+const char *transaction_emulator_emulate_transaction(void *transaction_emulator, const char *shard_account_boc, const char *message_boc, const char *other_params) {
   auto emulator = static_cast<emulator::TransactionEmulator *>(transaction_emulator);
   
   auto message_decoded = td::base64_decode(td::Slice(message_boc));
@@ -284,8 +268,7 @@ const char *transaction_emulator_emulate_transaction(void *transaction_emulator,
     ERROR_RESPONSE(PSTRING() << "Can't unpack shard account");
   }
 
-  auto result = emulator->emulate_transaction(std::move(account), message_cell, 0, 0, 
-    block::transaction::Transaction::tr_ord, nullptr, msg_tag == block::gen::CommonMsgInfo::ext_in_msg_info);
+  auto result = emulator->emulate_transaction(std::move(account), message_cell, 0, 0, block::transaction::Transaction::tr_ord);
   if (result.is_error()) {
     ERROR_RESPONSE(PSTRING() << "Emulate transaction failed: " << result.move_as_error());
   }
@@ -313,6 +296,78 @@ const char *transaction_emulator_emulate_transaction(void *transaction_emulator,
   auto new_shard_account_boc_b64 = td::base64_encode(new_shard_account_boc.move_as_ok().as_slice());
 
   return success_response(std::move(trans_boc_b64), std::move(new_shard_account_boc_b64), std::move(emulation_success.vm_log));
+}
+
+bool transaction_emulator_set_unixtime(void *transaction_emulator, uint32_t unixtime) {
+  auto emulator = static_cast<emulator::TransactionEmulator *>(transaction_emulator);
+
+  emulator->set_unixtime(unixtime);
+
+  return true;
+}
+
+bool transaction_emulator_set_lt(void *transaction_emulator, uint64_t lt) {
+  auto emulator = static_cast<emulator::TransactionEmulator *>(transaction_emulator);
+
+  emulator->set_lt(lt);
+
+  return true;
+}
+
+bool transaction_emulator_set_rand_seed(void *transaction_emulator, const char* rand_seed) {
+  auto emulator = static_cast<emulator::TransactionEmulator *>(transaction_emulator);
+
+  if (rand_seed == nullptr) {
+    emulator->set_rand_seed(nullptr);
+  } else {
+    td::BitArray<256> arr;
+    arr.as_slice().copy_from(td::Slice(rand_seed, 32));
+    emulator->set_rand_seed(&arr);
+  }
+
+  return true;
+}
+
+bool transaction_emulator_set_ignore_chksig(void *transaction_emulator, bool ignore_chksig) {
+  auto emulator = static_cast<emulator::TransactionEmulator *>(transaction_emulator);
+
+  emulator->set_ignore_chksig(ignore_chksig);
+
+  return true;
+}
+
+bool transaction_emulator_set_config(void *transaction_emulator, const char* config_boc) {
+  auto emulator = static_cast<emulator::TransactionEmulator *>(transaction_emulator);
+
+  auto global_config_res = decode_config(config_boc);
+  if (global_config_res.is_error()) {
+    LOG(ERROR) << global_config_res.move_as_error().message();
+    return false;
+  }
+
+  emulator->set_config(global_config_res.move_as_ok());
+
+  return true;
+}
+
+bool transaction_emulator_set_libs(void *transaction_emulator, const char* shardchain_libs_boc) {
+  auto emulator = static_cast<emulator::TransactionEmulator *>(transaction_emulator);
+
+  if (shardchain_libs_boc != nullptr) {
+    auto shardchain_libs_decoded = td::base64_decode(td::Slice(shardchain_libs_boc));
+    if (shardchain_libs_decoded.is_error()) {
+      LOG(ERROR) << "Can't decode base64 shardchain libraries boc: " << shardchain_libs_decoded.move_as_error();
+      return false;
+    }
+    auto shardchain_libs_cell = vm::std_boc_deserialize(shardchain_libs_decoded.move_as_ok());
+    if (shardchain_libs_cell.is_error()) {
+      LOG(ERROR) << "Can't deserialize shardchain libraries boc: " << shardchain_libs_cell.move_as_error();
+      return false;
+    }
+    emulator->set_libs(vm::Dictionary(shardchain_libs_cell.move_as_ok(), 256));
+  }
+
+  return true;
 }
 
 void transaction_emulator_destroy(void *transaction_emulator) {
