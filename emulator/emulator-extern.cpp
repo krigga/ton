@@ -260,7 +260,7 @@ const char *transaction_emulator_emulate_transaction(void *transaction_emulator,
   auto emulation_success = dynamic_cast<emulator::TransactionEmulator::EmulationSuccess&>(*emulation_result);
   auto trans_boc_b64 = cell_to_boc_b64(std::move(emulation_success.transaction));
   if (trans_boc_b64.is_error()) {
-    ERROR_RESPONSE(PSTRING() << "Can't serialize Transaction to boc" << trans_boc_b64.move_as_error());
+    ERROR_RESPONSE(PSTRING() << "Can't serialize Transaction to boc " << trans_boc_b64.move_as_error());
   }
 
   auto new_shard_account_cell = vm::CellBuilder().store_ref(emulation_success.account.total_state)
@@ -268,12 +268,12 @@ const char *transaction_emulator_emulate_transaction(void *transaction_emulator,
                                .store_long(emulation_success.account.last_trans_lt_).finalize();
   auto new_shard_account_boc_b64 = cell_to_boc_b64(std::move(new_shard_account_cell));
   if (new_shard_account_boc_b64.is_error()) {
-    ERROR_RESPONSE(PSTRING() << "Can't serialize ShardAccount to boc" << new_shard_account_boc_b64.move_as_error());
+    ERROR_RESPONSE(PSTRING() << "Can't serialize ShardAccount to boc " << new_shard_account_boc_b64.move_as_error());
   }
 
-  auto actions_boc_b64 = cell_to_boc_b64(std::move(emulation_success.actions));
+  auto actions_boc_b64 = emulation_success.actions.not_null() ? cell_to_boc_b64(std::move(emulation_success.actions)) : "";
   if (actions_boc_b64.is_error()) {
-    ERROR_RESPONSE(PSTRING() << "Can't serialize actions list cell to boc" << actions_boc_b64.move_as_error());
+    ERROR_RESPONSE(PSTRING() << "Can't serialize actions list cell to boc " << actions_boc_b64.move_as_error());
   }
 
   return success_response(trans_boc_b64.move_as_ok(), new_shard_account_boc_b64.move_as_ok(), std::move(emulation_success.vm_log), actions_boc_b64.move_as_ok());
