@@ -102,7 +102,7 @@ td::Ref<vm::Tuple> prepare_vm_c7(SmartContract::Args args) {
 SmartContract::Answer run_smartcont(SmartContract::State state, td::Ref<vm::Stack> stack, td::Ref<vm::Tuple> c7,
                                     vm::GasLimits gas, bool ignore_chksig, td::Ref<vm::Cell> libraries, int vm_log_verbosity) {
   auto gas_credit = gas.gas_credit;
-  vm::init_op_cp0();
+  vm::init_op_cp0(true);
   vm::DictionaryBase::get_empty_dictionary();
 
   class Logger : public td::LogInterface {
