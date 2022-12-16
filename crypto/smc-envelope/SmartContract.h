@@ -47,6 +47,7 @@ class SmartContract : public td::CntObject {
     bool success;
     td::Ref<vm::Stack> stack;
     td::Ref<vm::Cell> actions;
+    td::Ref<vm::Tuple> c7;
     td::int32 code;
     td::int64 gas_used;
     td::ConstBitPtr missing_library{0};

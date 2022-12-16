@@ -19,13 +19,14 @@ td::Result<std::string> cell_to_boc_b64(td::Ref<vm::Cell> cell) {
   return td::base64_encode(boc.as_slice());
 }
 
-const char *success_response(std::string&& transaction, std::string&& new_shard_account, std::string&& vm_log, td::optional<std::string>&& actions) {
+const char *success_response(std::string&& transaction, std::string&& new_shard_account, std::string&& vm_log, td::optional<std::string>&& actions, std::string&& c7) {
   td::JsonBuilder jb;
   auto json_obj = jb.enter_object();
   json_obj("success", td::JsonTrue());
   json_obj("transaction", std::move(transaction));
   json_obj("shard_account", std::move(new_shard_account));
   json_obj("vm_log", std::move(vm_log));
+  json_obj("c7", std::move(c7));
   if (actions) {
     json_obj("actions", actions.unwrap());
   } else {
@@ -168,7 +169,17 @@ const char *transaction_emulator_emulate_transaction(void *transaction_emulator,
     actions_boc_b64 = actions_boc_b64_result.move_as_ok();
   }
 
-  return success_response(trans_boc_b64.move_as_ok(), new_shard_account_boc_b64.move_as_ok(), std::move(emulation_success.vm_log), std::move(actions_boc_b64));
+  vm::CellBuilder c7_cb;
+  vm::StackEntry c7_stack_entry(std::move(emulation_success.c7));
+  if (!c7_stack_entry.serialize(c7_cb)) {
+    ERROR_RESPONSE(PSTRING() << "Couldn't serialize c7");
+  }
+  auto c7_boc_b64 = cell_to_boc_b64(c7_cb.finalize());
+  if (c7_boc_b64.is_error()) {
+    ERROR_RESPONSE(PSTRING() << "Couldn't serialize c7 cell: " << c7_boc_b64.move_as_error().to_string());
+  }
+
+  return success_response(trans_boc_b64.move_as_ok(), new_shard_account_boc_b64.move_as_ok(), std::move(emulation_success.vm_log), std::move(actions_boc_b64), c7_boc_b64.move_as_ok());
 }
 
 bool transaction_emulator_set_unixtime(void *transaction_emulator, uint32_t unixtime) {
@@ -355,6 +366,16 @@ const char *tvm_emulator_run_get_method(void *tvm_emulator, int method_id, const
     ERROR_RESPONSE(PSTRING() << "Couldn't serialize stack cell: " << result_stack_boc.move_as_error().to_string());
   }
 
+  vm::CellBuilder c7_cb;
+  vm::StackEntry c7_stack_entry(std::move(result.c7));
+  if (!c7_stack_entry.serialize(c7_cb)) {
+    ERROR_RESPONSE(PSTRING() << "Couldn't serialize c7");
+  }
+  auto result_c7_boc = cell_to_boc_b64(c7_cb.finalize());
+  if (result_c7_boc.is_error()) {
+    ERROR_RESPONSE(PSTRING() << "Couldn't serialize c7 cell: " << result_c7_boc.move_as_error().to_string());
+  }
+
   td::JsonBuilder jb;
   auto json_obj = jb.enter_object();
   json_obj("success", td::JsonTrue());
@@ -362,6 +383,7 @@ const char *tvm_emulator_run_get_method(void *tvm_emulator, int method_id, const
   json_obj("gas_used", std::to_string(result.gas_used));
   json_obj("vm_exit_code", result.code);
   json_obj("vm_log", result.vm_log);
+  json_obj("c7", result_c7_boc.move_as_ok());
   if (result.missing_library.is_null()) {
     json_obj("missing_library", td::JsonNull());
   } else {

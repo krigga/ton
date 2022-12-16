@@ -145,6 +145,7 @@ SmartContract::Answer run_smartcont(SmartContract::State state, td::Ref<vm::Stac
   res.accepted = gas.gas_credit == 0;
   res.success = (res.accepted && (unsigned)res.code <= 1);
   res.vm_log = logger.res;
+  res.c7 = vm.get_c7();
   if (GET_VERBOSITY_LEVEL() >= VERBOSITY_NAME(DEBUG)) {
     LOG(DEBUG) << "VM log\n" << logger.res;
     std::ostringstream os;

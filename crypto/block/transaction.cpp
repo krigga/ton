@@ -1069,6 +1069,7 @@ bool Transaction::prepare_compute_phase(const ComputePhaseConfig& cfg) {
   cp.gas_used = std::min<long long>(gas.gas_consumed(), gas.gas_limit);
   cp.accepted = (gas.gas_credit == 0);
   cp.success = (cp.accepted && vm.committed());
+  cp.c7 = vm.get_c7();
   if (cp.accepted & use_msg_state) {
     was_activated = true;
     acc_status = Account::acc_active;

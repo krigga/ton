@@ -177,6 +177,7 @@ struct ComputePhase {
   Ref<vm::Cell> in_msg;
   Ref<vm::Cell> new_data;
   Ref<vm::Cell> actions;
+  Ref<vm::Tuple> c7;
   std::string vm_log;
 };
 
