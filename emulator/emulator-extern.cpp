@@ -19,14 +19,18 @@ td::Result<std::string> cell_to_boc_b64(td::Ref<vm::Cell> cell) {
   return td::base64_encode(boc.as_slice());
 }
 
-const char *success_response(std::string&& transaction, std::string&& new_shard_account, std::string&& vm_log, td::optional<std::string>&& actions, std::string&& c7) {
+const char *success_response(std::string&& transaction, std::string&& new_shard_account, std::string&& vm_log, td::optional<std::string>&& actions, td::optional<std::string>&& c7) {
   td::JsonBuilder jb;
   auto json_obj = jb.enter_object();
   json_obj("success", td::JsonTrue());
   json_obj("transaction", std::move(transaction));
   json_obj("shard_account", std::move(new_shard_account));
   json_obj("vm_log", std::move(vm_log));
-  json_obj("c7", std::move(c7));
+  if (c7) {
+    json_obj("c7", c7.unwrap());
+  } else {
+    json_obj("c7", td::JsonNull());
+  }
   if (actions) {
     json_obj("actions", actions.unwrap());
   } else {
@@ -169,17 +173,21 @@ const char *transaction_emulator_emulate_transaction(void *transaction_emulator,
     actions_boc_b64 = actions_boc_b64_result.move_as_ok();
   }
 
-  vm::CellBuilder c7_cb;
-  vm::StackEntry c7_stack_entry(std::move(emulation_success.c7));
-  if (!c7_stack_entry.serialize(c7_cb)) {
-    ERROR_RESPONSE(PSTRING() << "Couldn't serialize c7");
-  }
-  auto c7_boc_b64 = cell_to_boc_b64(c7_cb.finalize());
-  if (c7_boc_b64.is_error()) {
-    ERROR_RESPONSE(PSTRING() << "Couldn't serialize c7 cell: " << c7_boc_b64.move_as_error().to_string());
+  td::optional<td::string> c7_boc_b64;
+  if (emulation_success.c7.not_null()) {
+    vm::CellBuilder c7_cb;
+    vm::StackEntry c7_stack_entry(std::move(emulation_success.c7));
+    if (!c7_stack_entry.serialize(c7_cb)) {
+      ERROR_RESPONSE(PSTRING() << "Couldn't serialize c7");
+    }
+    auto c7_boc_b64_result = cell_to_boc_b64(c7_cb.finalize());
+    if (c7_boc_b64_result.is_error()) {
+      ERROR_RESPONSE(PSTRING() << "Couldn't serialize c7 cell: " << c7_boc_b64_result.move_as_error().to_string());
+    }
+    c7_boc_b64 = c7_boc_b64_result.move_as_ok();
   }
 
-  return success_response(trans_boc_b64.move_as_ok(), new_shard_account_boc_b64.move_as_ok(), std::move(emulation_success.vm_log), std::move(actions_boc_b64), c7_boc_b64.move_as_ok());
+  return success_response(trans_boc_b64.move_as_ok(), new_shard_account_boc_b64.move_as_ok(), std::move(emulation_success.vm_log), std::move(actions_boc_b64), std::move(c7_boc_b64));
 }
 
 bool transaction_emulator_set_unixtime(void *transaction_emulator, uint32_t unixtime) {
