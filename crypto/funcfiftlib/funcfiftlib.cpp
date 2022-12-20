@@ -117,8 +117,6 @@ const char* version() {
   auto version_json = td::JsonBuilder();
   auto obj = version_json.enter_object();
   obj("funcVersion", funC::func_version);
-  obj("funcFiftLibCommitHash", GitMetadata::CommitSHA1());
-  obj("funcFiftLibCommitDate", GitMetadata::CommitDate());
   obj.leave();
   return strdup(version_json.string_builder().as_cslice().c_str());
 }
