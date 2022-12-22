@@ -98,9 +98,39 @@ td::Result<GetMethodParams> decode_get_method_params(const char* json) {
   return params;
 }
 
+class NoopLog : public td::LogInterface {
+ public:
+  NoopLog() {
+  }
+
+  void append(td::CSlice new_slice, int log_level) override {
+  }
+
+  void rotate() override {
+  }
+};
+
 extern "C" {
 
-const char *emulate(const char *config, const char* libs, int verbosity, const char* account, const char* message, const char* params) {
+void* create_emulator(const char *config, int verbosity) {
+    NoopLog logger;
+
+    td::log_interface = &logger;
+
+    SET_VERBOSITY_LEVEL(verbosity_NEVER);
+    return transaction_emulator_create(config, verbosity);
+}
+
+void destroy_emulator(void* em) {
+    NoopLog logger;
+
+    td::log_interface = &logger;
+
+    SET_VERBOSITY_LEVEL(verbosity_NEVER);
+    transaction_emulator_destroy(em);
+}
+
+const char *emulate(void* em, const char* libs, const char* account, const char* message, const char* params) {
     StringLog logger;
 
     td::log_interface = &logger;
@@ -111,8 +141,6 @@ const char *emulate(const char *config, const char* libs, int verbosity, const c
         return strdup(R"({"fail":true,"message":"Can't decode other params"})");
     }
     auto decoded_params = decoded_params_res.move_as_ok();
-
-    auto em = transaction_emulator_create(config, verbosity);
 
     bool rand_seed_set = true;
     if (decoded_params.rand_seed_hex) {
@@ -129,8 +157,6 @@ const char *emulate(const char *config, const char* libs, int verbosity, const c
     }
 
     auto tx = transaction_emulator_emulate_transaction(em, account, message);
-
-    transaction_emulator_destroy(em);
 
     const char* output = nullptr;
     {
