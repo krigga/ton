@@ -471,6 +471,7 @@ int VmState::run() {
       try {
         try {
           res = step();
+          VM_LOG_MASK(this, vm::VmLog::GasRemaining) << "gas remaining: " << gas.gas_remaining;
           gas.check();
         } catch (vm::CellBuilder::CellWriteError) {
           throw VmError{Excno::cell_ov};
@@ -509,7 +510,7 @@ int VmState::run() {
 
 bool VmState::try_commit() {
   if (cr.d[0].not_null() && cr.d[1].not_null() && cr.d[0]->get_depth() <= max_data_depth &&
-      cr.d[1]->get_depth() <= max_data_depth) {
+      cr.d[1]->get_depth() <= max_data_depth && cr.d[0]->get_level() == 0 && cr.d[1]->get_level() == 0) {
     cstate.c4 = cr.d[0];
     cstate.c5 = cr.d[1];
     cstate.committed = true;

@@ -73,6 +73,7 @@ class Collator final : public td::actor::Actor {
   Ref<ValidatorSet> validator_set_;
   td::actor::ActorId<ValidatorManager> manager;
   td::Timestamp timeout;
+  td::Timestamp soft_timeout_, medium_timeout_;
   td::Promise<BlockCandidate> main_promise;
   ton::BlockSeqno last_block_seqno{0};
   ton::BlockSeqno prev_mc_block_seqno{0};
@@ -103,6 +104,7 @@ class Collator final : public td::actor::Actor {
     return 2;
   }
 
+<<<<<<< HEAD
   static td::Result<std::unique_ptr<block::ConfigInfo>>
                      impl_fetch_config_params(std::unique_ptr<block::ConfigInfo> config,
                                               Ref<vm::Cell>* old_mparams,
@@ -115,6 +117,8 @@ class Collator final : public td::actor::Actor {
                                               td::RefInt256* basechain_create_fee,
                                               WorkchainId wc);
 
+=======
+>>>>>>> fix-emulator-bounced-body
   static td::Result<std::unique_ptr<block::transaction::Transaction>>
                         impl_create_ordinary_transaction(Ref<vm::Cell> msg_root,
                                                          block::Account* acc,

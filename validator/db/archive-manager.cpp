@@ -441,7 +441,10 @@ void ArchiveManager::get_block_by_unix_time(AccountIdPrefixFull account_id, Unix
                                             td::Promise<ConstBlockHandle> promise) {
   auto f = get_file_desc_by_unix_time(account_id, ts, false);
   if (f) {
-    auto n = get_next_file_desc(f);
+    auto n = f;
+    do {
+      n = get_next_file_desc(n);
+    } while (n != nullptr && !n->has_account_prefix(account_id));
     td::actor::ActorId<ArchiveSlice> aid;
     if (n) {
       aid = n->file_actor_id();
@@ -464,7 +467,10 @@ void ArchiveManager::get_block_by_lt(AccountIdPrefixFull account_id, LogicalTime
                                      td::Promise<ConstBlockHandle> promise) {
   auto f = get_file_desc_by_lt(account_id, lt, false);
   if (f) {
-    auto n = get_next_file_desc(f);
+    auto n = f;
+    do {
+      n = get_next_file_desc(n);
+    } while (n != nullptr && !n->has_account_prefix(account_id));
     td::actor::ActorId<ArchiveSlice> aid;
     if (n) {
       aid = n->file_actor_id();
@@ -743,6 +749,9 @@ ArchiveManager::FileDescription *ArchiveManager::get_file_desc_by_seqno(AccountI
     return get_file_desc_by_seqno(ShardIdFull{masterchainId}, seqno, key_block);
   }
   for (auto it = f.rbegin(); it != f.rend(); it++) {
+    if (it->second.deleted) {
+      continue;
+    }
     bool found = false;
     for (int i = 0; i < 60; i++) {
       auto shard = shard_prefix(account, i);
@@ -767,6 +776,9 @@ ArchiveManager::FileDescription *ArchiveManager::get_file_desc_by_unix_time(Acco
     return get_file_desc_by_unix_time(ShardIdFull{masterchainId}, ts, key_block);
   }
   for (auto it = f.rbegin(); it != f.rend(); it++) {
+    if (it->second.deleted) {
+      continue;
+    }
     bool found = false;
     for (int i = 0; i < 60; i++) {
       auto shard = shard_prefix(account, i);
@@ -791,6 +803,9 @@ ArchiveManager::FileDescription *ArchiveManager::get_file_desc_by_lt(AccountIdPr
     return get_file_desc_by_lt(ShardIdFull{masterchainId}, lt, key_block);
   }
   for (auto it = f.rbegin(); it != f.rend(); it++) {
+    if (it->second.deleted) {
+      continue;
+    }
     bool found = false;
     for (int i = 0; i < 60; i++) {
       auto shard = shard_prefix(account, i);
@@ -812,11 +827,13 @@ ArchiveManager::FileDescription *ArchiveManager::get_next_file_desc(FileDescript
   auto &m = get_file_map(f->id);
   auto it = m.find(f->id);
   CHECK(it != m.end());
-  it++;
-  if (it == m.end()) {
-    return nullptr;
-  } else {
-    return &it->second;
+  while (true) {
+    it++;
+    if (it == m.end()) {
+      return nullptr;
+    } else if (!it->second.deleted) {
+      return &it->second;
+    }
   }
 }
 
@@ -1153,13 +1170,17 @@ void ArchiveManager::truncate(BlockSeqno masterchain_seqno, ConstBlockHandle han
     auto it = key_files_.begin();
     while (it != key_files_.end()) {
       if (it->first.id <= masterchain_seqno) {
-        td::actor::send_closure(it->second.file_actor_id(), &ArchiveSlice::truncate, masterchain_seqno, handle,
-                                ig.get_promise());
+        if (!it->second.deleted) {
+          td::actor::send_closure(it->second.file_actor_id(), &ArchiveSlice::truncate, masterchain_seqno, handle,
+                                  ig.get_promise());
+        }
         it++;
       } else {
         auto it2 = it;
         it++;
-        td::actor::send_closure(it2->second.file_actor_id(), &ArchiveSlice::destroy, ig.get_promise());
+        if (!it2->second.deleted) {
+          td::actor::send_closure(it2->second.file_actor_id(), &ArchiveSlice::destroy, ig.get_promise());
+        }
         it2->second.file.release();
         index_
             ->erase(create_serialize_tl_object<ton_api::db_files_package_key>(it2->second.id.id, it2->second.id.key,
@@ -1174,13 +1195,17 @@ void ArchiveManager::truncate(BlockSeqno masterchain_seqno, ConstBlockHandle han
     auto it = files_.begin();
     while (it != files_.end()) {
       if (it->first.id <= masterchain_seqno) {
-        td::actor::send_closure(it->second.file_actor_id(), &ArchiveSlice::truncate, masterchain_seqno, handle,
-                                ig.get_promise());
+        if (!it->second.deleted) {
+          td::actor::send_closure(it->second.file_actor_id(), &ArchiveSlice::truncate, masterchain_seqno, handle,
+                                  ig.get_promise());
+        }
         it++;
       } else {
         auto it2 = it;
         it++;
-        td::actor::send_closure(it2->second.file_actor_id(), &ArchiveSlice::destroy, ig.get_promise());
+        if (!it2->second.deleted) {
+          td::actor::send_closure(it2->second.file_actor_id(), &ArchiveSlice::destroy, ig.get_promise());
+        }
         it2->second.file.release();
         index_
             ->erase(create_serialize_tl_object<ton_api::db_files_package_key>(it2->second.id.id, it2->second.id.key,
@@ -1230,6 +1255,16 @@ void ArchiveManager::truncate(BlockSeqno masterchain_seqno, ConstBlockHandle han
       }
     }
   }
+}
+
+bool ArchiveManager::FileDescription::has_account_prefix(AccountIdPrefixFull account_id) const {
+  for (int i = 0; i < 60; i++) {
+    auto shard = shard_prefix(account_id, i);
+    if (first_blocks.count(shard)) {
+      return true;
+    }
+  }
+  return false;
 }
 
 }  // namespace validator
