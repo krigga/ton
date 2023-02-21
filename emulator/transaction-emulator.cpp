@@ -32,7 +32,7 @@ td::Result<std::unique_ptr<TransactionEmulator::EmulationResult>> TransactionEmu
         return fetch_res.move_as_error_prefix("cannot fetch config params ");
     }
 
-    vm::init_op_cp0();
+    vm::init_op_cp0(true);
 
     if (rand_seed_) {
       compute_phase_cfg.block_rand_seed = rand_seed_.unwrap();
