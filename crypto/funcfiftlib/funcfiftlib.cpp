@@ -106,22 +106,23 @@ td::Result<std::string> compile_internal(char *config_json) {
 /// @param _data The data for the callback (a string).
 /// @param o_contents A pointer to the contents of the file, if found. Allocated via malloc().
 /// @param o_error A pointer to an error message, if there is one. Allocated via malloc().
+/// @param context A pointer to context passed by the user.
 ///
 /// The callback implementor must use malloc() to allocate storage for
 /// contents or error. The callback implementor must use free() to free
 /// said storage after func_compile returns.
 ///
 /// If the callback is not supported, *o_contents and *o_error must be set to NULL.
-typedef void (*CStyleReadFileCallback)(char const* _kind, char const* _data, char** o_contents, char** o_error);
+typedef void (*CStyleReadFileCallback)(char const* _kind, char const* _data, char** o_contents, char** o_error, void* context);
 
-funC::ReadCallback::Callback wrapReadCallback(CStyleReadFileCallback _readCallback)
+funC::ReadCallback::Callback wrapReadCallback(CStyleReadFileCallback _readCallback, void* callbackContext)
 {
   funC::ReadCallback::Callback readCallback;
   if (_readCallback) {
     readCallback = [=](funC::ReadCallback::Kind _kind, char const* _data) -> td::Result<std::string> {
       char* contents_c = nullptr;
       char* error_c = nullptr;
-      _readCallback(funC::ReadCallback::kindString(_kind).data(), _data, &contents_c, &error_c);
+      _readCallback(funC::ReadCallback::kindString(_kind).data(), _data, &contents_c, &error_c, callbackContext);
       if (!contents_c && !error_c) {
         return td::Status::Error("Callback not supported");
       }
@@ -146,9 +147,9 @@ const char* version() {
   return strdup(version_json.string_builder().as_cslice().c_str());
 }
 
-const char *func_compile(char *config_json, CStyleReadFileCallback callback) {
+const char *func_compile(char *config_json, CStyleReadFileCallback callback, void* callback_context) {
   if (callback) {
-    funC::read_callback = wrapReadCallback(callback);
+    funC::read_callback = wrapReadCallback(callback, callback_context);
   } else {
     funC::read_callback = funC::fs_read_callback;
   }
