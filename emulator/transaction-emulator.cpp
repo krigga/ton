@@ -32,7 +32,7 @@ td::Result<std::unique_ptr<TransactionEmulator::EmulationResult>> TransactionEmu
         return fetch_res.move_as_error_prefix("cannot fetch config params ");
     }
 
-    vm::init_op_cp0(true);
+    vm::init_op_cp0(debug_enabled_);
 
     if (rand_seed_) {
       compute_phase_cfg.block_rand_seed = rand_seed_.unwrap();
@@ -259,6 +259,10 @@ void TransactionEmulator::set_config(block::Config &&config) {
 
 void TransactionEmulator::set_libs(vm::Dictionary &&libs) {
   libraries_ = std::forward<vm::Dictionary>(libs);
+}
+
+void TransactionEmulator::set_debug_enabled(bool debug_enabled) {
+  debug_enabled_ = debug_enabled;
 }
 
 } // namespace emulator
