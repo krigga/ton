@@ -122,7 +122,11 @@ const char* version() {
 }
 
 const char *func_compile(char *config_json, CStyleReadFileCallback callback) {
-  funC::read_callback = wrapReadCallback(callback);
+  if (callback) {
+    funC::read_callback = wrapReadCallback(callback);
+  } else {
+    funC::read_callback = funC::fs_read_callback;
+  }
 
   auto res = compile_internal(config_json);
 
