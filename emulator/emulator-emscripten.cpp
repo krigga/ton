@@ -12,6 +12,8 @@ struct TransactionEmulationParams {
   uint64_t lt;
   td::optional<std::string> rand_seed_hex;
   bool ignore_chksig;
+  bool is_tick_tock;
+  bool is_tock;
   bool debug_enabled;
 };
 
@@ -40,6 +42,16 @@ td::Result<TransactionEmulationParams> decode_transaction_emulation_params(const
 
   TRY_RESULT(debug_enabled, td::get_json_object_bool_field(obj, "debug_enabled", false));
   params.debug_enabled = debug_enabled;
+
+  TRY_RESULT(is_tick_tock, td::get_json_object_bool_field(obj, "is_tick_tock", true, false));
+  params.is_tick_tock = is_tick_tock;
+
+  TRY_RESULT(is_tock, td::get_json_object_bool_field(obj, "is_tock", true, false));
+  params.is_tock = is_tock;
+
+  if (is_tock && !is_tick_tock) {
+    return td::Status::Error("Inconsistent parameters is_tick_tock=false, is_tock=true");
+  }
 
   return params;
 }
@@ -165,18 +177,23 @@ const char *emulate(void* em, const char* libs, const char* account, const char*
         return strdup(R"({"fail":true,"message":"Can't set params"})");
     }
 
-    auto tx = transaction_emulator_emulate_transaction(em, account, message);
+    const char *result;
+    if (decoded_params.is_tick_tock) {
+      result = transaction_emulator_emulate_tick_tock_transaction(em, account, decoded_params.is_tock);
+    } else {
+      result = transaction_emulator_emulate_transaction(em, account, message);
+    }
 
     const char* output = nullptr;
     {
         td::JsonBuilder jb;
         auto json_obj = jb.enter_object();
-        json_obj("output", td::JsonRaw(td::Slice(tx)));
+        json_obj("output", td::JsonRaw(td::Slice(result)));
         json_obj("logs", logger.get_string());
         json_obj.leave();
         output = strdup(jb.string_builder().as_cslice().c_str());
     }
-    free((void*) tx);
+    free((void*) result);
 
     return output;
 }
