@@ -18,6 +18,8 @@
 */
 #include "utils.h"
 #include "words.h"
+#include "td/utils/JsonBuilder.h"
+#include "td/utils/base64.h"
 #include "td/utils/PathView.h"
 #include "td/utils/filesystem.h"
 #include "td/utils/misc.h"
@@ -64,6 +66,145 @@ td::Result<std::string> load_FiftExt_fif(std::string dir = "") {
 }
 td::Result<std::string> load_Disasm_fif(std::string dir = "") {
   return load_source("Disasm.fif", dir);
+}
+
+class ReadWriteCallback {
+public:
+  /// Noncopyable.
+  ReadWriteCallback(ReadWriteCallback const&) = delete;
+  ReadWriteCallback& operator=(ReadWriteCallback const&) = delete;
+
+  enum class Kind
+  {
+    ReadFile,
+    WriteFile,
+    ReadFilePart,
+    IsFileExists,
+  };
+
+  static std::string kindString(Kind _kind)
+  {
+    switch (_kind)
+    {
+    case Kind::ReadFile:
+      return "readfile";
+    case Kind::WriteFile:
+      return "writefile";
+    case Kind::ReadFilePart:
+      return "readfilepart";
+    case Kind::IsFileExists:
+      return "isfileexists";
+    default:
+      throw ""; // todo ?
+    }
+  }
+
+  /// File reading or generic query callback.
+  using Callback = std::function<td::Result<std::string>(ReadWriteCallback::Kind, const char*)>;
+};
+
+class CallbackFileLoader : public fift::FileLoader {
+ public:
+  CallbackFileLoader(ReadWriteCallback::Callback callback) : callback_(callback) {}
+
+  td::Result<fift::FileLoader::File> read_file(td::CSlice filename) override {
+    TRY_RESULT(enc, callback_(ReadWriteCallback::Kind::ReadFile, filename.c_str()));
+    return decode_file(enc);
+  }
+
+  td::Status write_file(td::CSlice filename, td::Slice data) override {
+    auto data_enc = td::base64_encode(data);
+
+    td::JsonBuilder result_json;
+    auto result_obj = result_json.enter_object();
+    result_obj("filename", filename);
+    result_obj("data", data_enc);
+    result_obj.leave();
+
+    TRY_RESULT(enc, callback_(ReadWriteCallback::Kind::WriteFile, result_json.string_builder().as_cslice().c_str()));
+
+    return decode_status(enc);
+  }
+
+  td::Result<File> read_file_part(td::CSlice filename, td::int64 size, td::int64 offset) override {
+    td::JsonBuilder result_json;
+    auto result_obj = result_json.enter_object();
+    result_obj("filename", filename);
+    result_obj("size", size);
+    result_obj("offset", offset);
+    result_obj.leave();
+
+    TRY_RESULT(enc, callback_(ReadWriteCallback::Kind::ReadFilePart, result_json.string_builder().as_cslice().c_str()));
+    return decode_file(enc);
+  }
+
+  bool is_file_exists(td::CSlice filename) override {
+    auto enc = callback_(ReadWriteCallback::Kind::IsFileExists, filename.c_str());
+    if (enc.is_error()) {
+      return false;
+    } else {
+      auto enc_mv = enc.move_as_ok();
+      auto input_json = td::json_decode(td::MutableSlice(enc_mv));
+      if (input_json.is_error()) {
+        return false;
+      } else {
+        auto input_mv = input_json.move_as_ok();
+        return input_mv.get_boolean();
+      }
+    }
+  }
+
+ private:
+  td::Result<File> decode_file(std::string str) {
+    TRY_RESULT(input_json, td::json_decode(td::MutableSlice(str)));
+    auto &obj = input_json.get_object();
+
+    TRY_RESULT(path, td::get_json_object_string_field(obj, "path", false));
+    TRY_RESULT(data_enc, td::get_json_object_string_field(obj, "data", false));
+
+    TRY_RESULT(data, td::base64_decode(data_enc));
+
+    File file;
+    file.data = data;
+    file.path = path;
+
+    return file;
+  }
+
+  td::Status decode_status(std::string str) {
+    TRY_RESULT(input_json, td::json_decode(td::MutableSlice(str)));
+    auto &obj = input_json.get_object();
+
+    TRY_RESULT(ok, td::get_json_object_bool_field(obj, "ok", false));
+    if (ok) {
+      return td::Status::OK();
+    } else {
+      TRY_RESULT(message, td::get_json_object_string_field(obj, "error", false));
+      return td::Status::Error(message);
+    }
+  }
+
+  ReadWriteCallback::Callback callback_;
+};
+
+ReadWriteCallback::Callback wrapReadCallback(CStyleCallback _readCallback)
+{
+  ReadWriteCallback::Callback readCallback;
+  if (_readCallback) {
+    readCallback = [=](ReadWriteCallback::Kind _kind, char const* _data) -> td::Result<std::string> {
+      char* contents_c = nullptr;
+      char* error_c = nullptr;
+      _readCallback(ReadWriteCallback::kindString(_kind).data(), _data, &contents_c, &error_c);
+      if (!contents_c && !error_c) {
+        return td::Status::Error("Callback not supported");
+      }
+      if (contents_c) {
+        return contents_c;
+      }
+      return td::Status::Error(std::string(error_c));
+    };
+  }
+  return readCallback;
 }
 
 class MemoryFileLoader : public fift::FileLoader {
@@ -201,6 +342,15 @@ td::Result<FiftOutput> mem_run_fift(SourceLookup source_lookup, std::vector<std:
   res.source_lookup = std::move(source_lookup);
   res.output = ss.str();
   return std::move(res);
+}
+td::Result<FiftOutput> run_fift_callback(CStyleCallback callback, std::vector<std::string> include_paths, std::vector<std::string> args) {
+  auto wrapped = wrapReadCallback(callback);
+  auto loader = std::make_unique<CallbackFileLoader>(std::move(wrapped));
+  auto sl = fift::SourceLookup(std::move(loader));
+  for (auto& ip : include_paths) {
+    sl.add_include_path(ip);
+  }
+  return mem_run_fift(std::move(sl), std::move(args));
 }
 td::Result<fift::SourceLookup> create_mem_source_lookup(std::string main, std::string fift_dir, bool need_preamble,
                                                         bool need_asm, bool need_ton_util, bool need_lisp,

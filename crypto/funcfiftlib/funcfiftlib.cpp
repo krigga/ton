@@ -78,6 +78,31 @@ td::Result<std::string> compile_internal(char *config_json) {
   return result_json.string_builder().as_cslice().str();
 }
 
+td::Result<std::string> run_fift_callback_inner(char *config_json, fift::CStyleCallback callback) {
+  TRY_RESULT(input_json, td::json_decode(td::MutableSlice(config_json)))
+  auto &obj = input_json.get_object();
+
+  TRY_RESULT(include_paths_obj, td::get_json_object_field(obj, "include_paths", td::JsonValue::Type::Array, false));
+  TRY_RESULT(args_obj, td::get_json_object_field(obj, "args", td::JsonValue::Type::Array, false));
+
+  std::vector<std::string> include_paths;
+  std::vector<std::string> args;
+
+  auto &include_paths_arr = include_paths_obj.get_array();
+  for (auto &item : include_paths_arr) {
+    include_paths.push_back(item.get_string().str());
+  }
+
+  auto &args_arr = args_obj.get_array();
+  for (auto &item : args_arr) {
+    args.push_back(item.get_string().str());
+  }
+
+  TRY_RESULT(out, fift::run_fift_callback(callback, std::move(include_paths), std::move(args)));
+
+  return std::move(out.output);
+}
+
 /// Callback used to retrieve additional source files or data.
 ///
 /// @param _kind The kind of callback (a string).
@@ -144,5 +169,26 @@ const char *func_compile(char *config_json, CStyleReadFileCallback callback) {
   auto res_string = res.move_as_ok();
 
   return strdup(res_string.c_str());
+}
+
+const char* run_fift_callback(char *config_json, fift::CStyleCallback callback) {
+  auto res = run_fift_callback_inner(config_json, callback);
+  if (res.is_error()) {
+    auto result = res.move_as_error();
+    auto error_res = td::JsonBuilder();
+    auto error_o = error_res.enter_object();
+    error_o("status", "error");
+    error_o("message", result.message().str());
+    error_o.leave();
+    return strdup(error_res.string_builder().as_cslice().c_str());
+  } else {
+    auto result = res.move_as_ok();
+    auto res_b = td::JsonBuilder();
+    auto res_o = res_b.enter_object();
+    res_o("status", "ok");
+    res_o("output", result);
+    res_o.leave();
+    return strdup(res_b.string_builder().as_cslice().c_str());
+  }
 }
 }
