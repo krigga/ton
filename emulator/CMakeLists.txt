@@ -64,3 +64,5 @@ if (USE_EMSCRIPTEN)
   endif()
   target_compile_options(emulator-emscripten PRIVATE -fexceptions)
 endif()
+
+install(TARGETS emulator LIBRARY DESTINATION lib)
