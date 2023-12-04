@@ -73,6 +73,14 @@ EMULATOR_EXPORT bool transaction_emulator_set_libs(void *transaction_emulator, c
 EMULATOR_EXPORT bool transaction_emulator_set_debug_enabled(void *transaction_emulator, bool debug_enabled);
 
 /**
+ * @brief Set tuple of previous blocks (13th element of c7)
+ * @param transaction_emulator Pointer to TransactionEmulator object
+ * @param info_boc Base64 encoded BoC serialized TVM tuple (VmStackValue).
+ * @return true in case of success, false in case of error
+ */
+EMULATOR_EXPORT bool transaction_emulator_set_prev_blocks_info(void *transaction_emulator, const char* info_boc);
+
+/**
  * @brief Emulate transaction
  * @param transaction_emulator Pointer to TransactionEmulator object
  * @param shard_account_boc Base64 encoded BoC serialized ShardAccount
@@ -158,6 +166,14 @@ EMULATOR_EXPORT bool tvm_emulator_set_libraries(void *tvm_emulator, const char *
  * @return true in case of success, false in case of error 
  */
 EMULATOR_EXPORT bool tvm_emulator_set_c7(void *tvm_emulator, const char *address, uint32_t unixtime, uint64_t balance, const char *rand_seed_hex, const char *config);
+
+/**
+ * @brief Set tuple of previous blocks (13th element of c7)
+ * @param tvm_emulator Pointer to TVM emulator
+ * @param info_boc Base64 encoded BoC serialized TVM tuple (VmStackValue).
+ * @return true in case of success, false in case of error
+ */
+EMULATOR_EXPORT bool tvm_emulator_set_prev_blocks_info(void *tvm_emulator, const char* info_boc);
 
 /**
  * @brief Set TVM gas limit
