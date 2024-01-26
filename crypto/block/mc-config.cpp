@@ -1934,6 +1934,7 @@ td::Result<SizeLimitsConfig> Config::get_size_limits_config() const {
     unpack_v1(rec);
     limits.max_acc_state_bits = rec.max_acc_state_bits;
     limits.max_acc_state_cells = rec.max_acc_state_cells;
+    limits.max_acc_public_libraries = rec.max_acc_public_libraries;
   };
   gen::SizeLimitsConfig::Record_size_limits_config rec_v1;
   gen::SizeLimitsConfig::Record_size_limits_config_v2 rec_v2;
@@ -1963,7 +1964,7 @@ BurningConfig Config::get_burning_config() const {
     return {};
   }
   BurningConfig c;
-  c.fee_burn_nom = rec.fee_burn_nom;
+  c.fee_burn_num = rec.fee_burn_num;
   c.fee_burn_denom = rec.fee_burn_denom;
   vm::CellSlice& addr = rec.blackhole_addr.write();
   if (addr.fetch_long(1)) {

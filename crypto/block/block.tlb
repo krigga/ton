@@ -610,7 +610,7 @@ _ dns_root_addr:bits256 = ConfigParam 4;  // root TON DNS resolver
 
 burning_config#01
   blackhole_addr:(Maybe bits256)
-  fee_burn_nom:# fee_burn_denom:# { fee_burn_nom <= fee_burn_denom } { fee_burn_denom >= 1 } = BurningConfig;
+  fee_burn_num:# fee_burn_denom:# { fee_burn_num <= fee_burn_denom } { fee_burn_denom >= 1 } = BurningConfig;
 _ BurningConfig = ConfigParam 5;
 
 _ mint_new_price:Grams mint_add_price:Grams = ConfigParam 6;
@@ -780,7 +780,8 @@ _ MisbehaviourPunishmentConfig = ConfigParam 40;
 size_limits_config#01 max_msg_bits:uint32 max_msg_cells:uint32 max_library_cells:uint32 max_vm_data_depth:uint16
   max_ext_msg_size:uint32 max_ext_msg_depth:uint16 = SizeLimitsConfig;
 size_limits_config_v2#02 max_msg_bits:uint32 max_msg_cells:uint32 max_library_cells:uint32 max_vm_data_depth:uint16
-  max_ext_msg_size:uint32 max_ext_msg_depth:uint16 max_acc_state_cells:uint32 max_acc_state_bits:uint32 = SizeLimitsConfig;
+  max_ext_msg_size:uint32 max_ext_msg_depth:uint16 max_acc_state_cells:uint32 max_acc_state_bits:uint32
+  max_acc_public_libraries:uint32 = SizeLimitsConfig;
 _ SizeLimitsConfig = ConfigParam 43;
 
 // key is [ wc:int32 addr:uint256 ]

@@ -389,6 +389,7 @@ struct SizeLimitsConfig {
   ExtMsgLimits ext_msg_limits;
   td::uint32 max_acc_state_cells = 1 << 16;
   td::uint32 max_acc_state_bits = (1 << 16) * 1023;
+  td::uint32 max_acc_public_libraries = 256;
 };
 
 struct CatchainValidatorsConfig {
@@ -506,13 +507,13 @@ class ShardConfig {
 
 struct BurningConfig {
   td::optional<td::Bits256> blackhole_addr;
-  td::uint32 fee_burn_nom = 0, fee_burn_denom = 1;
+  td::uint32 fee_burn_num = 0, fee_burn_denom = 1;
 
   td::RefInt256 calculate_burned_fees(const td::RefInt256& x) const {
     if (x.is_null()) {
       return x;
     }
-    return x * fee_burn_nom / td::make_refint(fee_burn_denom);
+    return x * fee_burn_num / td::make_refint(fee_burn_denom);
   }
 
   CurrencyCollection calculate_burned_fees(const CurrencyCollection& x) const {
