@@ -1078,18 +1078,32 @@ bool ComputePhaseConfig::is_address_suspended(ton::WorkchainId wc, td::Bits256 a
 }
 
 /**
+ * Computes the maximum gas fee based on the gas prices and limits.
+ *
+ * @param gas_price256 The gas price from config as RefInt256
+ * @param gas_limit The gas limit from config
+ * @param flat_gas_limit The flat gas limit from config
+ * @param flat_gas_price The flat gas price from config
+ *
+ * @returns The maximum gas fee.
+ */
+static td::RefInt256 compute_max_gas_threshold(const td::RefInt256& gas_price256, td::uint64 gas_limit,
+                                               td::uint64 flat_gas_limit, td::uint64 flat_gas_price) {
+  if (gas_limit > flat_gas_limit) {
+    return td::rshift(gas_price256 * (gas_limit - flat_gas_limit), 16, 1) + td::make_bigint(flat_gas_price);
+  } else {
+    return td::make_refint(flat_gas_price);
+  }
+}
+
+/**
  * Computes the maximum for gas fee based on the gas prices and limits.
  *
  * Updates max_gas_threshold.
  */
 void ComputePhaseConfig::compute_threshold() {
   gas_price256 = td::make_refint(gas_price);
-  if (gas_limit > flat_gas_limit) {
-    max_gas_threshold =
-        td::rshift(gas_price256 * (gas_limit - flat_gas_limit), 16, 1) + td::make_bigint(flat_gas_price);
-  } else {
-    max_gas_threshold = td::make_refint(flat_gas_price);
-  }
+  max_gas_threshold = compute_max_gas_threshold(gas_price256, gas_limit, flat_gas_limit, flat_gas_price);
 }
 
 /**
@@ -1126,6 +1140,67 @@ td::RefInt256 ComputePhaseConfig::compute_gas_price(td::uint64 gas_used) const {
 }
 
 namespace transaction {
+
+/**
+ * Checks if it is required to increase gas_limit (from GasLimitsPrices config) to special_gas_limit * 2
+ * from masterchain GasLimitsPrices config for the transaction.
+ *
+ * In January 2024 a highload wallet of @wallet Telegram bot in mainnet was stuck because current gas limit (1M) is
+ * not enough to clean up old queires, thus locking funds inside.
+ * See comment in crypto/smartcont/highload-wallet-v2-code.fc for details on why this happened.
+ * Account address: EQD_v9j1rlsuHHw2FIhcsCFFSD367ldfDdCKcsNmNpIRzUlu
+ * It was proposed to validators to increase gas limit for this account for a limited amount of time (until 2024-02-29).
+ * It is activated by setting global version to 5 in ConfigParam 8.
+ * This config change also activates new behavior for special accounts in masterchain.
+ *
+ * @param cfg The compute phase configuration.
+ * @param now The Unix time of the transaction.
+ * @param account The account of the transaction.
+ *
+ * @returns True if gas_limit override is required, false otherwise
+ */
+static bool override_gas_limit(const ComputePhaseConfig& cfg, ton::UnixTime now, const Account& account) {
+  if (!cfg.special_gas_full) {
+    return false;
+  }
+  ton::UnixTime until = 1709164800;  // 2024-02-29 00:00:00 UTC
+  ton::WorkchainId wc = 0;
+  const char* addr_hex = "FFBFD8F5AE5B2E1C7C3614885CB02145483DFAEE575F0DD08A72C366369211CD";
+  return now < until && account.workchain == wc && account.addr.to_hex() == addr_hex;
+}
+
+/**
+ * Computes the amount of gas that can be bought for a given amount of nanograms.
+ * Usually equal to `cfg.gas_bought_for(nanograms)`
+ * However, it overrides gas_limit from config in special cases.
+ *
+ * @param cfg The compute phase configuration.
+ * @param nanograms The amount of nanograms to compute gas for.
+ *
+ * @returns The amount of gas.
+ */
+td::uint64 Transaction::gas_bought_for(const ComputePhaseConfig& cfg, td::RefInt256 nanograms) {
+  if (override_gas_limit(cfg, now, account)) {
+    gas_limit_overridden = true;
+    // Same as ComputePhaseConfig::gas_bought for, but with other gas_limit and max_gas_threshold
+    auto gas_limit = cfg.mc_gas_prices.special_gas_limit * 2;
+    auto max_gas_threshold =
+        compute_max_gas_threshold(cfg.gas_price256, gas_limit, cfg.flat_gas_limit, cfg.flat_gas_price);
+    if (nanograms.is_null() || sgn(nanograms) < 0) {
+      return 0;
+    }
+    if (nanograms >= max_gas_threshold) {
+      return gas_limit;
+    }
+    if (nanograms < cfg.flat_gas_price) {
+      return 0;
+    }
+    auto res = td::div((std::move(nanograms) - cfg.flat_gas_price) << 16, cfg.gas_price256);
+    return res->to_long() + cfg.flat_gas_limit;
+  }
+  return cfg.gas_bought_for(nanograms);
+}
+
 /**
  * Computes the gas limits for a transaction.
  *
@@ -1139,20 +1214,21 @@ bool Transaction::compute_gas_limits(ComputePhase& cp, const ComputePhaseConfig&
   if (account.is_special) {
     cp.gas_max = cfg.special_gas_limit;
   } else {
-    cp.gas_max = cfg.gas_bought_for(balance.grams);
+    cp.gas_max = gas_bought_for(cfg, balance.grams);
   }
-  cp.gas_credit = 0;
-  if (trans_type != tr_ord) {
+  if (trans_type != tr_ord || (account.is_special && cfg.special_gas_full)) {
     // may use all gas that can be bought using remaining balance
     cp.gas_limit = cp.gas_max;
   } else {
     // originally use only gas bought using remaining message balance
     // if the message is "accepted" by the smart contract, the gas limit will be set to gas_max
-    cp.gas_limit = std::min(cfg.gas_bought_for(msg_balance_remaining.grams), cp.gas_max);
-    if (!block::tlb::t_Message.is_internal(in_msg)) {
-      // external messages carry no balance, give them some credit to check whether they are accepted
-      cp.gas_credit = std::min(cfg.gas_credit, cp.gas_max);
-    }
+    cp.gas_limit = std::min(gas_bought_for(cfg, msg_balance_remaining.grams), cp.gas_max);
+  }
+  if (trans_type == tr_ord && !block::tlb::t_Message.is_internal(in_msg)) {
+    // external messages carry no balance, give them some credit to check whether they are accepted
+    cp.gas_credit = std::min(cfg.gas_credit, cp.gas_max);
+  } else {
+    cp.gas_credit = 0;
   }
   LOG(DEBUG) << "gas limits: max=" << cp.gas_max << ", limit=" << cp.gas_limit << ", credit=" << cp.gas_credit;
   return true;
@@ -1260,6 +1336,10 @@ Ref<vm::Tuple> Transaction::prepare_vm_c7(const ComputePhaseConfig& cfg) const {
     // prev_blocks_info is always not null, since get_prev_blocks_info()  
     // may only return tuple or raise Error (See crypto/block/mc-config.cpp#2223)
     tuple.push_back(cfg.prev_blocks_info.not_null() ? vm::StackEntry(cfg.prev_blocks_info) : vm::StackEntry());
+  }
+  if (cfg.global_version >= 6) {
+    tuple.push_back(cfg.unpacked_config_tuple.not_null() ? vm::StackEntry(cfg.unpacked_config_tuple)
+                                                         : vm::StackEntry()); // unpacked_config_tuple:[...]
   }
   auto tuple_ref = td::make_cnt_ref<std::vector<vm::StackEntry>>(std::move(tuple));
   LOG(DEBUG) << "SmartContractInfo initialized with " << vm::StackEntry(tuple_ref).to_string();
@@ -1483,6 +1563,7 @@ bool Transaction::prepare_compute_phase(const ComputePhaseConfig& cfg) {
   vm.set_global_version(cfg.global_version);
   vm.set_c7(prepare_vm_c7(cfg));  // tuple with SmartContractInfo
   vm.set_chksig_always_succeed(cfg.ignore_chksig);
+  vm.set_stop_on_accept_message(cfg.stop_on_accept_message);
   // vm.incr_stack_trace(1);    // enable stack dump after each step
 
   LOG(DEBUG) << "starting VM";
@@ -1841,6 +1922,25 @@ td::uint64 MsgPrices::compute_fwd_fees(td::uint64 cells, td::uint64 bits) const 
                           .add(td::uint128(0xffffu))
                           .shr(16)
                           .lo();
+}
+
+/**
+ * Computes the forward fees for a message based on the number of cells and bits.
+ * Return the result as td::RefInt256
+ *
+ * msg_fwd_fees = (lump_price + ceil((bit_price * msg.bits + cell_price * msg.cells)/2^16)) nanograms
+ * ihr_fwd_fees = ceil((msg_fwd_fees * ihr_price_factor)/2^16) nanograms
+ * bits in the root cell of a message are not included in msg.bits (lump_price pays for them)
+ *
+ * @param cells The number of cells in the message.
+ * @param bits The number of bits in the message.
+ *
+ * @returns The computed forward fees for the message as td::RefInt256j.
+ */
+td::RefInt256 MsgPrices::compute_fwd_fees256(td::uint64 cells, td::uint64 bits) const {
+  return td::rshift(
+      td::make_refint(lump_price) + td::make_refint(bit_price) * bits + td::make_refint(cell_price) * cells, 16,
+      1);  // divide by 2^16 with ceil rounding
 }
 
 /**
@@ -2537,6 +2637,31 @@ static td::uint32 get_public_libraries_count(const td::Ref<vm::Cell>& libraries)
 }
 
 /**
+ * Calculates the number of changes of public libraries in the dictionary.
+ *
+ * @param old_libraries The dictionary of account libraries before the transaction.
+ * @param new_libraries The dictionary of account libraries after the transaction.
+ *
+ * @returns The number of changed public libraries.
+ */
+static td::uint32 get_public_libraries_diff_count(const td::Ref<vm::Cell>& old_libraries,
+                                                  const td::Ref<vm::Cell>& new_libraries) {
+  td::uint32 count = 0;
+  vm::Dictionary dict1{old_libraries, 256};
+  vm::Dictionary dict2{new_libraries, 256};
+  dict1.scan_diff(dict2, [&](td::ConstBitPtr key, int n, Ref<vm::CellSlice> val1, Ref<vm::CellSlice> val2) -> bool {
+    CHECK(n == 256);
+    bool is_public1 = val1.not_null() && block::is_public_library(key, val1);
+    bool is_public2 = val2.not_null() && block::is_public_library(key, val2);
+    if (is_public1 != is_public2) {
+      ++count;
+    }
+    return true;
+  });
+  return count;
+}
+
+/**
  * Checks that the new account state fits in the limits.
  * This function is not called for special accounts.
  *
@@ -2979,14 +3104,14 @@ bool Transaction::serialize() {
     vm::load_cell_slice(root).print_rec(std::cerr);
   }
 
-  if (!block::gen::t_Transaction.validate_ref(root)) {
+  if (!block::gen::t_Transaction.validate_ref(4096, root)) {
     LOG(ERROR) << "newly-generated transaction failed to pass automated validation:";
     vm::load_cell_slice(root).print_rec(std::cerr);
     block::gen::t_Transaction.print_ref(std::cerr, root);
     root.clear();
     return false;
   }
-  if (!block::tlb::t_Transaction.validate_ref(root)) {
+  if (!block::tlb::t_Transaction.validate_ref(4096, root)) {
     LOG(ERROR) << "newly-generated transaction failed to pass hand-written validation:";
     vm::load_cell_slice(root).print_rec(std::cerr);
     block::gen::t_Transaction.print_ref(std::cerr, root);
@@ -3178,8 +3303,8 @@ td::Result<vm::NewCellStorageStat::Stat> Transaction::estimate_block_storage_pro
  *
  * @returns True if the limits were successfully updated, False otherwise.
  */
-bool Transaction::update_limits(block::BlockLimitStatus& blimst, bool with_size) const {
-  if (!(blimst.update_lt(end_lt) && blimst.update_gas(gas_used()))) {
+bool Transaction::update_limits(block::BlockLimitStatus& blimst, bool with_gas, bool with_size) const {
+  if (!(blimst.update_lt(end_lt) && blimst.update_gas(with_gas ? gas_used() : 0))) {
     return false;
   }
   if (with_size) {
@@ -3187,8 +3312,12 @@ bool Transaction::update_limits(block::BlockLimitStatus& blimst, bool with_size)
           blimst.add_account(is_first))) {
       return false;
     }
-    if (account.is_masterchain() && (was_frozen || was_deleted)) {
-      blimst.extra_library_diff += get_public_libraries_count(account.orig_library);
+    if (account.is_masterchain()) {
+      if (was_frozen || was_deleted) {
+        blimst.public_library_diff += get_public_libraries_count(account.orig_library);
+      } else {
+        blimst.public_library_diff += get_public_libraries_diff_count(account.orig_library, new_library);
+      }
     }
   }
   return true;
@@ -3421,6 +3550,10 @@ td::Status FetchConfigParams::fetch_config_params(
                                                   storage_phase_cfg->delete_due_limit)) {
       return td::Status::Error(-668, "cannot unpack current gas prices and limits from masterchain configuration");
     }
+    TRY_RESULT_PREFIX(mc_gas_prices, config.get_gas_limits_prices(true),
+                      "cannot unpack masterchain gas prices and limits: ");
+    compute_phase_cfg->mc_gas_prices = std::move(mc_gas_prices);
+    compute_phase_cfg->special_gas_full = config.get_global_version() >= 5;
     storage_phase_cfg->enable_due_payment = config.get_global_version() >= 4;
     compute_phase_cfg->block_rand_seed = *rand_seed;
     compute_phase_cfg->max_vm_data_depth = size_limits.max_vm_data_depth;
@@ -3428,6 +3561,9 @@ td::Status FetchConfigParams::fetch_config_params(
     compute_phase_cfg->global_version = config.get_global_version();
     if (compute_phase_cfg->global_version >= 4) {
       compute_phase_cfg->prev_blocks_info = std::move(prev_blocks_info);
+    }
+    if (compute_phase_cfg->global_version >= 6) {
+      compute_phase_cfg->unpacked_config_tuple = config.get_unpacked_config_tuple(now);
     }
     compute_phase_cfg->suspended_addresses = config.get_suspended_addresses(now);
     compute_phase_cfg->size_limits = size_limits;
