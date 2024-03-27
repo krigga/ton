@@ -73,7 +73,7 @@ rm -rf *
 
 cd ..
 
-git clone https://github.com/emscripten-core/emsdk.git
+git clone https://github.com/emscripten-core/emsdk.git --branch 3.1.19 --depth 1
 cd emsdk
 ./emsdk install 3.1.19
 ./emsdk activate 3.1.19
