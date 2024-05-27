@@ -217,7 +217,9 @@ bool Account::unpack_address(vm::CellSlice& addr_cs) {
     addr.bits().copy_from(addr_rewrite.cbits(), split_depth_);
   } else if (split_depth_) {
     ton::StdSmcAddress new_addr = addr_orig;
+    LOG(ERROR) << "!!!1 addr_orig " << addr_orig.to_hex() << " new_addr " << new_addr.to_hex();
     new_addr.bits().copy_from(addr_rewrite.cbits(), split_depth_);
+    LOG(ERROR) << "!!!2 new_addr " << new_addr.to_hex() << " addr_rewrite " << addr_rewrite.to_hex() << " split depth " << split_depth_;
     if (new_addr != addr) {
       LOG(ERROR) << "error unpacking account " << workchain << ":" << addr.to_hex()
                  << " : account header contains different address " << new_addr.to_hex() << " (with splitting depth "
@@ -235,6 +237,7 @@ bool Account::unpack_address(vm::CellSlice& addr_cs) {
     return false;
   }
   addr_rewrite = addr.bits();  // initialize all 32 bits of addr_rewrite
+  LOG(ERROR) << "!!!3 addr " << addr.to_hex() << " addr_rewrite " << addr_rewrite.to_hex();
   if (!split_depth_) {
     my_addr_exact = my_addr;
   }
