@@ -978,7 +978,7 @@ void combine_parallel(val& x, const val y) {
 }
 }  // namespace blk_fl
 
-blk_fl::val insert_debug_info(Lexer& lex, CodeBlob& code, bool first_stmt, bool ret) {
+void insert_debug_info(Lexer& lex, CodeBlob& code, bool first_stmt, bool ret) {
   if (with_debug_info) {
     auto& op = code.emplace_back(lex.cur().loc, Op::_DebugInfo);
     op.simple_int_const = (int) debug_infos.size();

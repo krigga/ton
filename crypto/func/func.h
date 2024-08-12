@@ -694,11 +694,11 @@ struct CodeBlob {
   enum { _AllowPostModification = 1, _ComputeAsmLtr = 2 };
   int var_cnt, in_var_cnt, op_cnt;
   TypeExpr* ret_type;
-  std::string name;
   SrcLocation loc;
   std::vector<TmpVar> vars;
   std::unique_ptr<Op> ops;
   std::unique_ptr<Op>* cur_ops;
+  std::string name;
   std::stack<std::unique_ptr<Op>*> cur_ops_stack;
   int flags = 0;
   bool require_callxargs = false;
