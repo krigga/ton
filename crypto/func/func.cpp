@@ -207,8 +207,8 @@ int generate_output(std::ostream &outs, std::ostream &errs, std::ostream &debug_
       auto vb = arrb.enter_value();
       auto ob = vb.enter_object();
       ob("file", di.loc_file);
-      ob("line", di.loc_line);
-      ob("pos", di.loc_pos);
+      ob("line", (td::int64) di.loc_line);
+      ob("pos", (td::int64) di.loc_pos);
 
       td::JsonBuilder varb;
       auto vararrb = varb.enter_array();
