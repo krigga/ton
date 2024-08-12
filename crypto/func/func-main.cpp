@@ -36,7 +36,7 @@
 void usage(const char* progname) {
   std::cerr
       << "usage: " << progname
-      << " [-vIAPSR][-O<level>][-i<indent-spc>][-o<output-filename>][-W<boc-filename>] {<func-source-filename> ...}\n"
+      << " [-vIAPSRd][-O<level>][-i<indent-spc>][-o<output-filename>][-W<boc-filename>] {<func-source-filename> ...}\n"
          "\tGenerates Fift TVM assembler code from a funC source\n"
          "-I\tEnables interactive mode (parse stdin)\n"
          "-o<fift-output-filename>\tWrites generated code into specified file instead of stdout\n"
@@ -47,6 +47,7 @@ void usage(const char* progname) {
          "-P\tEnvelope code into PROGRAM{ ... }END>c\n"
          "-S\tInclude stack layout comments in the output code\n"
          "-R\tInclude operation rewrite comments in the output code\n"
+         "-d\tInclude debug information\n"
          "-W<output-boc-file>\tInclude Fift code to serialize and save generated code into specified BoC file. Enables "
          "-A and -P.\n"
          "\t-s\tOutput semantic version of FunC and exit\n"
@@ -57,7 +58,7 @@ void usage(const char* progname) {
 int main(int argc, char* const argv[]) {
   int i;
   std::string output_filename;
-  while ((i = getopt(argc, argv, "Ahi:Io:O:PRsSvW:V")) != -1) {
+  while ((i = getopt(argc, argv, "Ahi:Io:O:PRsSvdW:V")) != -1) {
     switch (i) {
       case 'A':
         funC::asm_preamble = true;
@@ -85,6 +86,9 @@ int main(int argc, char* const argv[]) {
         break;
       case 'v':
         ++funC::verbosity;
+        break;
+      case 'd':
+        funC::with_debug_info = true;
         break;
       case 'W':
         funC::boc_output_filename = optarg;
@@ -125,5 +129,5 @@ int main(int argc, char* const argv[]) {
 
   funC::read_callback = funC::fs_read_callback;
 
-  return funC::func_proceed(sources, *outs, std::cerr);
+  return funC::func_proceed(sources, *outs, std::cerr, *outs);
 }

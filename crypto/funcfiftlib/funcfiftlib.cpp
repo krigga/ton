@@ -41,6 +41,7 @@ td::Result<std::string> compile_internal(char *config_json) {
 
   TRY_RESULT(opt_level, td::get_json_object_int_field(obj, "optLevel", false));
   TRY_RESULT(sources_obj, td::get_json_object_field(obj, "sources", td::JsonValue::Type::Array, false));
+  TRY_RESULT(enable_debug_info, td::get_json_object_bool_field(obj, "debugInfo", true, false));
 
   auto &sources_arr = sources_obj.get_array();
 
@@ -54,9 +55,10 @@ td::Result<std::string> compile_internal(char *config_json) {
   funC::program_envelope = true;
   funC::verbosity = 0;
   funC::indent = 1;
+  funC::with_debug_info = enable_debug_info;
 
-  std::ostringstream outs, errs;
-  auto compile_res = funC::func_proceed(sources, outs, errs);
+  std::ostringstream outs, errs, debug_out;
+  auto compile_res = funC::func_proceed(sources, outs, errs, debug_out);
 
   if (compile_res != 0) {
     return td::Status::Error(std::string("Func compilation error: ") + errs.str());
@@ -70,6 +72,7 @@ td::Result<std::string> compile_internal(char *config_json) {
   result_obj("status", "ok");
   result_obj("codeBoc", td::base64_encode(boc));
   result_obj("fiftCode", outs.str());
+  result_obj("debugInfo", td::JsonRaw(debug_out.str()));
   result_obj("codeHashHex", code_cell->get_hash().to_hex());
   result_obj.leave();
 

@@ -554,7 +554,8 @@ struct Op {
     _Repeat,
     _Again,
     _TryCatch,
-    _SliceConst
+    _SliceConst,
+    _DebugInfo
   };
   int cl;
   enum { _Disabled = 1, _Reachable = 2, _NoReturn = 4, _ImpureR = 8, _ImpureW = 16, _Impure = 24 };
@@ -568,6 +569,7 @@ struct Op {
   std::unique_ptr<Op> block0, block1;
   td::RefInt256 int_const;
   std::string str_const;
+  int simple_int_const;
   Op(const SrcLocation& _where = {}, int _cl = _Undef) : cl(_cl), flags(0), fun_ref(nullptr), where(_where) {
   }
   Op(const SrcLocation& _where, int _cl, const std::vector<var_idx_t>& _left)
@@ -700,7 +702,8 @@ struct CodeBlob {
   std::stack<std::unique_ptr<Op>*> cur_ops_stack;
   int flags = 0;
   bool require_callxargs = false;
-  CodeBlob(TypeExpr* ret = nullptr) : var_cnt(0), in_var_cnt(0), op_cnt(0), ret_type(ret), cur_ops(&ops) {
+  bool had_stmts = false;
+  CodeBlob(TypeExpr* ret = nullptr, std::string name = "") : var_cnt(0), in_var_cnt(0), op_cnt(0), ret_type(ret), cur_ops(&ops), name(name) {
   }
   template <typename... Args>
   Op& emplace_back(const Args&... args) {
@@ -1736,11 +1739,21 @@ AsmOp push_const(td::RefInt256 x);
 
 void define_builtins();
 
+struct DebugInfo {
+  std::string loc_file;
+  long loc_line{};
+  long loc_pos{};
+  std::vector<std::string> vars;
+  std::string func_name;
+  bool first_stmt;
+  bool ret;
+};
 
 extern int verbosity, indent, opt_level;
-extern bool stack_layout_comments, op_rewrite_comments, program_envelope, asm_preamble, interactive;
+extern bool stack_layout_comments, op_rewrite_comments, program_envelope, asm_preamble, interactive, with_debug_info;
 extern std::string generated_from, boc_output_filename;
 extern ReadCallback::Callback read_callback;
+extern std::vector<DebugInfo> debug_infos;
 
 td::Result<std::string> fs_read_callback(ReadCallback::Kind kind, const char* query);
 
@@ -1785,7 +1798,7 @@ extern GlobalPragma pragma_allow_post_modification, pragma_compute_asm_ltr;
  *
  */
 
-int func_proceed(const std::vector<std::string> &sources, std::ostream &outs, std::ostream &errs);
+int func_proceed(const std::vector<std::string> &sources, std::ostream &outs, std::ostream &errs, std::ostream &debug_out);
 
 }  // namespace funC
 

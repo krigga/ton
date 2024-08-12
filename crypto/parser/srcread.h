@@ -42,6 +42,8 @@ struct FileDescr {
   const char* convert_offset(long offset, long* line_no, long* line_pos, long* line_size = nullptr) const;
 };
 
+std::ostream& operator<<(std::ostream& os, const FileDescr* fdescr);
+
 struct Fatal {
   std::string message;
   Fatal(std::string _msg) : message(std::move(_msg)) {

@@ -874,6 +874,19 @@ bool Op::generate_code_step(Stack& stack) {
       stack.o << "TRY";
       return true;
     }
+    case _DebugInfo: {
+      std::ostringstream ops;
+      ops << "\"DI" << simple_int_const << "\" DEBUGSTR";
+      stack.o << ops.str();
+      if (!debug_infos[simple_int_const].ret) {
+        for (auto i : stack.s) {
+          std::ostringstream varstrs;
+          stack.o.show_var(varstrs, i.first);
+          debug_infos[simple_int_const].vars.push_back(varstrs.str());
+        }
+      }
+      return true;
+    }
     default:
       std::cerr << "fatal: unknown operation <??" << cl << ">\n";
       throw src::ParseError{where, "unknown operation in generate_code()"};
