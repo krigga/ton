@@ -119,6 +119,8 @@ EMULATOR_EXPORT bool transaction_emulator_set_prev_blocks_info(void *transaction
  */
 EMULATOR_EXPORT const char *transaction_emulator_emulate_transaction(void *transaction_emulator, const char *shard_account_boc, const char *message_boc);
 
+EMULATOR_EXPORT const char *transaction_emulator_sbs_emulate_transaction(void *transaction_emulator, const char *shard_account_boc, const char *message_boc);
+
 EMULATOR_EXPORT bool transaction_emulator_sbs_step(void *transaction_emulator);
 
 EMULATOR_EXPORT const char *transaction_emulator_sbs_result(void *transaction_emulator);
@@ -243,6 +245,8 @@ EMULATOR_EXPORT bool tvm_emulator_set_debug_enabled(void *tvm_emulator, bool deb
  * }
  */
 EMULATOR_EXPORT const char *tvm_emulator_run_get_method(void *tvm_emulator, int method_id, const char *stack_boc);
+
+EMULATOR_EXPORT const char *tvm_emulator_sbs_run_get_method(void *tvm_emulator, int method_id, const char *stack_boc);
 
 EMULATOR_EXPORT bool tvm_emulator_sbs_step(void *tvm_emulator);
 

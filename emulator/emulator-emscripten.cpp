@@ -182,29 +182,7 @@ const char *emulate_sbs(void *em, const char* libs, const char* account, const c
         return strdup(R"({"fail":true,"message":"Can't set params"})");
     }
 
-    return transaction_emulator_emulate_transaction(em, account, message);
-
-    // const char *result;
-    // if (decoded_params.is_tick_tock) {
-    //   result = transaction_emulator_emulate_tick_tock_transaction(em, account, decoded_params.is_tock);
-    // } else {
-    //   result = transaction_emulator_emulate_transaction(em, account, message);
-    // }
-
-    // transaction_emulator_destroy(em);
-
-    // const char* output = nullptr;
-    // {
-    //     td::JsonBuilder jb;
-    //     auto json_obj = jb.enter_object();
-    //     json_obj("output", td::JsonRaw(td::Slice(result)));
-    //     json_obj("logs", logger.get_string());
-    //     json_obj.leave();
-    //     output = strdup(jb.string_builder().as_cslice().c_str());
-    // }
-    // free((void*) result);
-
-    // return output;
+    return transaction_emulator_sbs_emulate_transaction(em, account, message);
 }
 
 bool em_sbs_step(void *em) {
@@ -303,26 +281,9 @@ void *setup_sbs_get_method(const char *params, const char* stack, const char* co
         return strdup(R"({"fail":true,"message":"Can't set params"})");
     }
 
-    tvm_emulator_run_get_method(tvm, decoded_params.method_id, stack);
+    tvm_emulator_sbs_run_get_method(tvm, decoded_params.method_id, stack);
 
     return tvm;
-
-    // auto res = tvm_emulator_run_get_method(tvm, decoded_params.method_id, stack);
-
-    // tvm_emulator_destroy(tvm);
-
-    // const char* output = nullptr;
-    // {
-    //     td::JsonBuilder jb;
-    //     auto json_obj = jb.enter_object();
-    //     json_obj("output", td::JsonRaw(td::Slice(res)));
-    //     json_obj("logs", logger.get_string());
-    //     json_obj.leave();
-    //     output = strdup(jb.string_builder().as_cslice().c_str());
-    // }
-    // free((void*) res);
-
-    // return output;
 }
 
 bool sbs_step(void *tvm) {

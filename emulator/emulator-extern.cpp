@@ -175,45 +175,124 @@ const char *transaction_emulator_emulate_transaction(void *transaction_emulator,
     account.last_trans_hash_ = shard_account.last_trans_hash;
   }
 
+  auto result = emulator->emulate_transaction(std::move(account), message_cell, now, 0, block::transaction::Transaction::tr_ord);
+  if (result.is_error()) {
+    ERROR_RESPONSE(PSTRING() << "Emulate transaction failed: " << result.move_as_error());
+  }
+  auto emulation_result = result.move_as_ok();
+
+  auto external_not_accepted = dynamic_cast<emulator::TransactionEmulator::EmulationExternalNotAccepted *>(emulation_result.get());
+  if (external_not_accepted) {
+    return external_not_accepted_response(std::move(external_not_accepted->vm_log), external_not_accepted->vm_exit_code, 
+                                          external_not_accepted->elapsed_time);
+  }
+
+  auto emulation_success = dynamic_cast<emulator::TransactionEmulator::EmulationSuccess&>(*emulation_result);
+  auto trans_boc_b64 = cell_to_boc_b64(std::move(emulation_success.transaction));
+  if (trans_boc_b64.is_error()) {
+    ERROR_RESPONSE(PSTRING() << "Can't serialize Transaction to boc " << trans_boc_b64.move_as_error());
+  }
+
+  auto new_shard_account_cell = vm::CellBuilder().store_ref(emulation_success.account.total_state)
+                               .store_bits(emulation_success.account.last_trans_hash_.as_bitslice())
+                               .store_long(emulation_success.account.last_trans_lt_).finalize();
+  auto new_shard_account_boc_b64 = cell_to_boc_b64(std::move(new_shard_account_cell));
+  if (new_shard_account_boc_b64.is_error()) {
+    ERROR_RESPONSE(PSTRING() << "Can't serialize ShardAccount to boc " << new_shard_account_boc_b64.move_as_error());
+  }
+
+  td::optional<td::string> actions_boc_b64;
+  if (emulation_success.actions.not_null()) {
+    auto actions_boc_b64_result = cell_to_boc_b64(std::move(emulation_success.actions));
+    if (actions_boc_b64_result.is_error()) {
+      ERROR_RESPONSE(PSTRING() << "Can't serialize actions list cell to boc " << actions_boc_b64_result.move_as_error());
+    }
+    actions_boc_b64 = actions_boc_b64_result.move_as_ok();
+  }
+
+  return success_response(trans_boc_b64.move_as_ok(), new_shard_account_boc_b64.move_as_ok(), std::move(emulation_success.vm_log), 
+                          std::move(actions_boc_b64), emulation_success.elapsed_time);
+}
+
+const char *transaction_emulator_sbs_emulate_transaction(void *transaction_emulator, const char *shard_account_boc, const char *message_boc) {
+  auto emulator = static_cast<emulator::TransactionEmulator *>(transaction_emulator);
+  
+  auto message_cell_r = boc_b64_to_cell(message_boc);
+  if (message_cell_r.is_error()) {
+    ERROR_RESPONSE(PSTRING() << "Can't deserialize message boc: " << message_cell_r.move_as_error());
+  }
+  auto message_cell = message_cell_r.move_as_ok();
+  auto message_cs = vm::load_cell_slice(message_cell);
+  int msg_tag = block::gen::t_CommonMsgInfo.get_tag(message_cs);
+
+  auto shard_account_cell = boc_b64_to_cell(shard_account_boc);
+  if (shard_account_cell.is_error()) {
+    ERROR_RESPONSE(PSTRING() << "Can't deserialize shard account boc: " << shard_account_cell.move_as_error());
+  }
+  auto shard_account_slice = vm::load_cell_slice(shard_account_cell.ok_ref());
+  block::gen::ShardAccount::Record shard_account;
+  if (!tlb::unpack(shard_account_slice, shard_account)) {
+    ERROR_RESPONSE(PSTRING() << "Can't unpack shard account cell");
+  }
+
+  td::Ref<vm::CellSlice> addr_slice;
+  auto account_slice = vm::load_cell_slice(shard_account.account);
+  bool account_exists = block::gen::t_Account.get_tag(account_slice) == block::gen::Account::account;
+  if (block::gen::t_Account.get_tag(account_slice) == block::gen::Account::account_none) {
+    if (msg_tag == block::gen::CommonMsgInfo::ext_in_msg_info) {
+      block::gen::CommonMsgInfo::Record_ext_in_msg_info info;
+      if (!tlb::unpack(message_cs, info)) {
+        ERROR_RESPONSE(PSTRING() <<  "Can't unpack inbound external message");
+      }
+      addr_slice = std::move(info.dest);
+    }
+    else if (msg_tag == block::gen::CommonMsgInfo::int_msg_info) {
+      block::gen::CommonMsgInfo::Record_int_msg_info info;
+      if (!tlb::unpack(message_cs, info)) {
+          ERROR_RESPONSE(PSTRING() << "Can't unpack inbound internal message");
+      }
+      addr_slice = std::move(info.dest);
+    } else {
+      ERROR_RESPONSE(PSTRING() << "Only ext in and int message are supported");
+    }
+  } else if (block::gen::t_Account.get_tag(account_slice) == block::gen::Account::account) {
+    block::gen::Account::Record_account account_record;
+    if (!tlb::unpack(account_slice, account_record)) {
+      ERROR_RESPONSE(PSTRING() << "Can't unpack account cell");
+    }
+    addr_slice = std::move(account_record.addr);
+  } else {
+    ERROR_RESPONSE(PSTRING() << "Can't parse account cell");
+  }
+  ton::WorkchainId wc;
+  ton::StdSmcAddress addr;
+  if (!block::tlb::t_MsgAddressInt.extract_std_address(addr_slice, wc, addr)) {
+    ERROR_RESPONSE(PSTRING() << "Can't extract account address");
+  }
+
+  auto account = block::Account(wc, addr.bits());
+  ton::UnixTime now = emulator->get_unixtime();
+  if (!now) {
+    now = (unsigned)std::time(nullptr);
+  }
+  bool is_special = wc == ton::masterchainId && emulator->get_config().is_special_smartcontract(addr);
+  if (account_exists) {
+    if (!account.unpack(vm::load_cell_slice_ref(shard_account_cell.move_as_ok()), now, is_special)) {
+      ERROR_RESPONSE(PSTRING() << "Can't unpack shard account");
+    }
+  } else {
+    if (!account.init_new(now)) {
+      ERROR_RESPONSE(PSTRING() << "Can't init new account");
+    }
+    account.last_trans_lt_ = shard_account.last_trans_lt;
+    account.last_trans_hash_ = shard_account.last_trans_hash;
+  }
+
   auto result = emulator->emulate_transaction_sbs(std::move(account), message_cell, now, 0, block::transaction::Transaction::tr_ord);
   if (result.is_error()) {
     ERROR_RESPONSE(PSTRING() << "Emulate transaction failed: " << result.move_as_error());
   }
   return (const char*) result.move_as_ok();
-
-  // auto emulation_result = result.move_as_ok();
-
-  // auto external_not_accepted = dynamic_cast<emulator::TransactionEmulator::EmulationExternalNotAccepted *>(emulation_result.get());
-  // if (external_not_accepted) {
-  //   return external_not_accepted_response(std::move(external_not_accepted->vm_log), external_not_accepted->vm_exit_code, 
-  //                                         external_not_accepted->elapsed_time);
-  // }
-
-  // auto emulation_success = dynamic_cast<emulator::TransactionEmulator::EmulationSuccess&>(*emulation_result);
-  // auto trans_boc_b64 = cell_to_boc_b64(std::move(emulation_success.transaction));
-  // if (trans_boc_b64.is_error()) {
-  //   ERROR_RESPONSE(PSTRING() << "Can't serialize Transaction to boc " << trans_boc_b64.move_as_error());
-  // }
-
-  // auto new_shard_account_cell = vm::CellBuilder().store_ref(emulation_success.account.total_state)
-  //                              .store_bits(emulation_success.account.last_trans_hash_.as_bitslice())
-  //                              .store_long(emulation_success.account.last_trans_lt_).finalize();
-  // auto new_shard_account_boc_b64 = cell_to_boc_b64(std::move(new_shard_account_cell));
-  // if (new_shard_account_boc_b64.is_error()) {
-  //   ERROR_RESPONSE(PSTRING() << "Can't serialize ShardAccount to boc " << new_shard_account_boc_b64.move_as_error());
-  // }
-
-  // td::optional<td::string> actions_boc_b64;
-  // if (emulation_success.actions.not_null()) {
-  //   auto actions_boc_b64_result = cell_to_boc_b64(std::move(emulation_success.actions));
-  //   if (actions_boc_b64_result.is_error()) {
-  //     ERROR_RESPONSE(PSTRING() << "Can't serialize actions list cell to boc " << actions_boc_b64_result.move_as_error());
-  //   }
-  //   actions_boc_b64 = actions_boc_b64_result.move_as_ok();
-  // }
-
-  // return success_response(trans_boc_b64.move_as_ok(), new_shard_account_boc_b64.move_as_ok(), std::move(emulation_success.vm_log), 
-  //                         std::move(actions_boc_b64), emulation_success.elapsed_time);
 }
 
 bool transaction_emulator_sbs_step(void *transaction_emulator) {
@@ -663,7 +742,7 @@ const char* tvm_emulator_sbs_get_code_pos(void *tvm_emulator) {
   return strdup(res.c_str());
 }
 
-const char *tvm_emulator_run_get_method(void *tvm_emulator, int method_id, const char *stack_boc) {
+const char *tvm_emulator_sbs_run_get_method(void *tvm_emulator, int method_id, const char *stack_boc) {
   auto stack_cell = boc_b64_to_cell(stack_boc);
   if (stack_cell.is_error()) {
     ERROR_RESPONSE(PSTRING() << "Couldn't deserialize stack cell: " << stack_cell.move_as_error().to_string());
@@ -677,35 +756,50 @@ const char *tvm_emulator_run_get_method(void *tvm_emulator, int method_id, const
   auto emulator = static_cast<emulator::TvmEmulator *>(tvm_emulator);
   auto result = emulator->run_get_method_sbs(method_id, stack);
 
-  return (const char*) result; // TODO
-  
-  // vm::FakeVmStateLimits fstate(3500);  // limit recursive (de)serialization calls
-  // vm::VmStateInterface::Guard guard(&fstate);
-  
-  // vm::CellBuilder stack_cb;
-  // if (!result.stack->serialize(stack_cb)) {
-  //   ERROR_RESPONSE(PSTRING() << "Couldn't serialize stack");
-  // }
-  // auto result_stack_boc = cell_to_boc_b64(stack_cb.finalize());
-  // if (result_stack_boc.is_error()) {
-  //   ERROR_RESPONSE(PSTRING() << "Couldn't serialize stack cell: " << result_stack_boc.move_as_error().to_string());
-  // }
+  return (const char*) result;
+}
 
-  // td::JsonBuilder jb;
-  // auto json_obj = jb.enter_object();
-  // json_obj("success", td::JsonTrue());
-  // json_obj("stack", result_stack_boc.move_as_ok());
-  // json_obj("gas_used", std::to_string(result.gas_used));
-  // json_obj("vm_exit_code", result.code);
-  // json_obj("vm_log", result.vm_log);
-  // if (!result.missing_library) {
-  //   json_obj("missing_library", td::JsonNull());
-  // } else {
-  //   json_obj("missing_library", result.missing_library.value().to_hex());
-  // }
-  // json_obj.leave();
+const char *tvm_emulator_run_get_method(void *tvm_emulator, int method_id, const char *stack_boc) {
+  auto stack_cell = boc_b64_to_cell(stack_boc);
+  if (stack_cell.is_error()) {
+    ERROR_RESPONSE(PSTRING() << "Couldn't deserialize stack cell: " << stack_cell.move_as_error().to_string());
+  }
+  auto stack_cs = vm::load_cell_slice(stack_cell.move_as_ok());
+  td::Ref<vm::Stack> stack;
+  if (!vm::Stack::deserialize_to(stack_cs, stack)) {
+     ERROR_RESPONSE(PSTRING() << "Couldn't deserialize stack");
+  }
 
-  // return strdup(jb.string_builder().as_cslice().c_str());
+  auto emulator = static_cast<emulator::TvmEmulator *>(tvm_emulator);
+  auto result = emulator->run_get_method(method_id, stack);
+
+  vm::FakeVmStateLimits fstate(3500);  // limit recursive (de)serialization calls
+  vm::VmStateInterface::Guard guard(&fstate);
+
+  vm::CellBuilder stack_cb;
+  if (!result.stack->serialize(stack_cb)) {
+    ERROR_RESPONSE(PSTRING() << "Couldn't serialize stack");
+  }
+  auto result_stack_boc = cell_to_boc_b64(stack_cb.finalize());
+  if (result_stack_boc.is_error()) {
+    ERROR_RESPONSE(PSTRING() << "Couldn't serialize stack cell: " << result_stack_boc.move_as_error().to_string());
+  }
+
+  td::JsonBuilder jb;
+  auto json_obj = jb.enter_object();
+  json_obj("success", td::JsonTrue());
+  json_obj("stack", result_stack_boc.move_as_ok());
+  json_obj("gas_used", std::to_string(result.gas_used));
+  json_obj("vm_exit_code", result.code);
+  json_obj("vm_log", result.vm_log);
+  if (!result.missing_library) {
+    json_obj("missing_library", td::JsonNull());
+  } else {
+    json_obj("missing_library", result.missing_library.value().to_hex());
+  }
+  json_obj.leave();
+
+  return strdup(jb.string_builder().as_cslice().c_str());
 }
 
 const char *tvm_emulator_sbs_get_method_result(void *tvm_emulator) {
