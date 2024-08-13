@@ -471,6 +471,87 @@ int VmState::step() {
   }
 }
 
+int VmState::sbs_init() {
+  if (code.is_null() || stack.is_null()) {
+    // throw VmError{Excno::fatal, "cannot run an uninitialized VM"};
+    return (int)Excno::fatal;  // no ~ for unhandled exceptions
+  }
+  sbs_restore_parent = false;
+  sbs_res = 0;
+  sbs_running = false;
+  return 0;
+}
+
+td::optional<int> VmState::sbs_step() {
+  try {
+    if (!sbs_running) {
+      if (sbs_restore_parent) {
+        restore_parent_vm(~sbs_res);
+      }
+      sbs_running = true;
+    }
+    td::optional<int> res_inner = sbs_step_inner();
+    if (!res_inner) {
+      return res_inner;
+    }
+    sbs_res = *res_inner;
+    sbs_running = false;
+  } catch (VmNoGas &vmoog) {
+    ++steps;
+    VM_LOG(this) << "unhandled out-of-gas exception: gas consumed=" << gas.gas_consumed()
+                  << ", limit=" << gas.gas_limit;
+    get_stack().clear();
+    get_stack().push_smallint(gas.gas_consumed());
+    sbs_res = vmoog.get_errno();  // no ~ for unhandled exceptions (to make their faking impossible)
+  }
+  if (!parent) {
+    return sbs_res;
+  }
+  sbs_restore_parent = true;
+  return {};
+}
+
+int VmState::sbs_exit_code() {
+  return sbs_res;
+}
+
+td::optional<int> VmState::sbs_step_inner() {
+  int res;
+  Guard guard(this);
+  try {
+    try {
+      res = step();
+      VM_LOG_MASK(this, vm::VmLog::GasRemaining) << "gas remaining: " << gas.gas_remaining;
+      gas.check();
+    } catch (vm::CellBuilder::CellWriteError) {
+      throw VmError{Excno::cell_ov};
+    } catch (vm::CellBuilder::CellCreateError) {
+      throw VmError{Excno::cell_ov};
+    } catch (vm::CellSlice::CellReadError) {
+      throw VmError{Excno::cell_und};
+    }
+  } catch (const VmError& vme) {
+    VM_LOG(this) << "handling exception code " << vme.get_errno() << ": " << vme.get_msg();
+    try {
+      ++steps;
+      res = throw_exception(vme.get_errno());
+    } catch (const VmError& vme2) {
+      VM_LOG(this) << "exception " << vme2.get_errno() << " while handling exception: " << vme.get_msg();
+      return ~vme2.get_errno();
+    }
+  }
+  if (!res) {
+    return {};
+  }
+  if ((res | 1) == -1 && !try_commit()) {
+    VM_LOG(this) << "automatic commit failed (new data or action cells too deep)";
+    get_stack().clear();
+    get_stack().push_smallint(0);
+    return ~(int)Excno::cell_ov;
+  }
+  return res;
+}
+
 int VmState::run_inner() {
   int res;
   Guard guard(this);

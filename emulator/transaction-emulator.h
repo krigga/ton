@@ -18,6 +18,13 @@ class TransactionEmulator {
   bool ignore_chksig_;
   bool debug_enabled_;
   td::Ref<vm::Tuple> prev_blocks_info_;
+  std::vector<block::StoragePrices> storage_prices_;
+  block::StoragePhaseConfig storage_phase_cfg_{&storage_prices_};
+  block::ComputePhaseConfig compute_phase_cfg_;
+  block::ActionPhaseConfig action_phase_cfg_;
+  std::unique_ptr<block::transaction::Transaction> trans_;
+  block::Account account_;
+  bool external_;
 
 public:
   TransactionEmulator(std::shared_ptr<block::Config> config, int vm_log_verbosity = 0) :
@@ -67,6 +74,14 @@ public:
   td::Result<std::unique_ptr<EmulationResult>> emulate_transaction(
       block::Account&& account, td::Ref<vm::Cell> msg_root, ton::UnixTime utime, ton::LogicalTime lt, int trans_type);
 
+  td::Result<bool> emulate_transaction_sbs(block::Account&& account, td::Ref<vm::Cell> msg_root, ton::UnixTime utime, ton::LogicalTime lt, int trans_type);
+  td::Result<bool> step_sbs();
+  td::Result<std::unique_ptr<EmulationResult>> result_sbs();
+
+  vm::VmState& vm_sbs() {
+    return trans_->sbs_vm_;
+  }
+
   td::Result<EmulationSuccess> emulate_transaction(block::Account&& account, td::Ref<vm::Cell> original_trans);
   td::Result<EmulationChain> emulate_transactions_chain(block::Account&& account, std::vector<td::Ref<vm::Cell>>&& original_transactions);
 
@@ -88,5 +103,15 @@ private:
                                                          block::StoragePhaseConfig* storage_phase_cfg,
                                                          block::ComputePhaseConfig* compute_phase_cfg,
                                                          block::ActionPhaseConfig* action_phase_cfg);
+
+
+  td::Result<bool> create_transaction_sbs(
+                                                          td::Ref<vm::Cell> msg_root, block::Account* acc,
+                                                          ton::UnixTime utime, ton::LogicalTime lt, int trans_type,
+                                                          block::StoragePhaseConfig* storage_phase_cfg,
+                                                          block::ComputePhaseConfig* compute_phase_cfg,
+                                                          block::ActionPhaseConfig* action_phase_cfg);
+
+  td::Result<bool> continue_transaction_sbs();
 };
 } // namespace emulator

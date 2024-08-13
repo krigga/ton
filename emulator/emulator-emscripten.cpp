@@ -156,6 +156,73 @@ void destroy_emulator(void* em) {
     transaction_emulator_destroy(em);
 }
 
+const char *emulate_sbs(void *em, const char* libs, const char* account, const char* message, const char* params) {
+    StringLog* logger = new StringLog;
+
+    td::log_interface = logger;
+    SET_VERBOSITY_LEVEL(verbosity_DEBUG);
+
+    auto decoded_params_res = decode_transaction_emulation_params(params);
+    if (decoded_params_res.is_error()) {
+        return strdup(R"({"fail":true,"message":"Can't decode other params"})");
+    }
+    auto decoded_params = decoded_params_res.move_as_ok();
+
+    bool rand_seed_set = true;
+    if (decoded_params.rand_seed_hex) {
+      rand_seed_set = transaction_emulator_set_rand_seed(em, decoded_params.rand_seed_hex.unwrap().c_str());
+    }
+
+    if (!transaction_emulator_set_libs(em, libs) ||
+        !transaction_emulator_set_lt(em, decoded_params.lt) ||
+        !transaction_emulator_set_unixtime(em, decoded_params.utime) ||
+        !transaction_emulator_set_ignore_chksig(em, decoded_params.ignore_chksig) ||
+        !transaction_emulator_set_debug_enabled(em, decoded_params.debug_enabled) ||
+        !rand_seed_set) {
+        return strdup(R"({"fail":true,"message":"Can't set params"})");
+    }
+
+    return transaction_emulator_emulate_transaction(em, account, message);
+
+    // const char *result;
+    // if (decoded_params.is_tick_tock) {
+    //   result = transaction_emulator_emulate_tick_tock_transaction(em, account, decoded_params.is_tock);
+    // } else {
+    //   result = transaction_emulator_emulate_transaction(em, account, message);
+    // }
+
+    // transaction_emulator_destroy(em);
+
+    // const char* output = nullptr;
+    // {
+    //     td::JsonBuilder jb;
+    //     auto json_obj = jb.enter_object();
+    //     json_obj("output", td::JsonRaw(td::Slice(result)));
+    //     json_obj("logs", logger.get_string());
+    //     json_obj.leave();
+    //     output = strdup(jb.string_builder().as_cslice().c_str());
+    // }
+    // free((void*) result);
+
+    // return output;
+}
+
+bool em_sbs_step(void *em) {
+  return transaction_emulator_sbs_step(em);
+}
+
+const char *em_sbs_stack(void *em) {
+  return transaction_emulator_sbs_get_stack(em);
+}
+
+const char *em_sbs_code_pos(void *em) {
+  return transaction_emulator_sbs_get_code_pos(em);
+}
+
+const char* em_sbs_result(void *em) {
+  return transaction_emulator_sbs_result(em);
+}
+
 const char *emulate_with_emulator(void* em, const char* libs, const char* account, const char* message, const char* params) {
     StringLog logger;
 
@@ -209,6 +276,69 @@ const char *emulate(const char *config, const char* libs, int verbosity, const c
     auto result = emulate_with_emulator(em, libs, account, message, params);
     transaction_emulator_destroy(em);
     return result;
+}
+
+void *setup_sbs_get_method(const char *params, const char* stack, const char* config) {
+    StringLog* logger = new StringLog;
+
+    td::log_interface = logger;
+    SET_VERBOSITY_LEVEL(verbosity_DEBUG);
+
+    auto decoded_params_res = decode_get_method_params(params);
+    if (decoded_params_res.is_error()) {
+        return strdup(R"({"fail":true,"message":"Can't decode params"})");
+    }
+    auto decoded_params = decoded_params_res.move_as_ok();
+
+    auto tvm = tvm_emulator_create(decoded_params.code.c_str(), decoded_params.data.c_str(), decoded_params.verbosity);
+
+    if ((decoded_params.libs && !tvm_emulator_set_libraries(tvm, decoded_params.libs.value().c_str())) ||
+        !tvm_emulator_set_c7(tvm, decoded_params.address.c_str(), decoded_params.unixtime, decoded_params.balance,
+                             decoded_params.rand_seed_hex.c_str(), config) ||
+        (decoded_params.prev_blocks_info &&
+         !tvm_emulator_set_prev_blocks_info(tvm, decoded_params.prev_blocks_info.value().c_str())) ||
+        (decoded_params.gas_limit > 0 && !tvm_emulator_set_gas_limit(tvm, decoded_params.gas_limit)) ||
+        !tvm_emulator_set_debug_enabled(tvm, decoded_params.debug_enabled)) {
+        tvm_emulator_destroy(tvm);
+        return strdup(R"({"fail":true,"message":"Can't set params"})");
+    }
+
+    tvm_emulator_run_get_method(tvm, decoded_params.method_id, stack);
+
+    return tvm;
+
+    // auto res = tvm_emulator_run_get_method(tvm, decoded_params.method_id, stack);
+
+    // tvm_emulator_destroy(tvm);
+
+    // const char* output = nullptr;
+    // {
+    //     td::JsonBuilder jb;
+    //     auto json_obj = jb.enter_object();
+    //     json_obj("output", td::JsonRaw(td::Slice(res)));
+    //     json_obj("logs", logger.get_string());
+    //     json_obj.leave();
+    //     output = strdup(jb.string_builder().as_cslice().c_str());
+    // }
+    // free((void*) res);
+
+    // return output;
+}
+
+bool sbs_step(void *tvm) {
+  return tvm_emulator_sbs_step(tvm);
+}
+
+const char *sbs_get_stack(void *tvm) {
+  return tvm_emulator_sbs_get_stack(tvm);
+}
+
+const char* sbs_get_code_pos(void *tvm) {
+  return tvm_emulator_sbs_get_code_pos(tvm);
+}
+
+const char* sbs_get_method_result(void *tvm) {
+  return tvm_emulator_sbs_get_method_result(tvm);
 }
 
 const char *run_get_method(const char *params, const char* stack, const char* config) {

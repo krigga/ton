@@ -104,6 +104,9 @@ class VmState final : public VmStateInterface {
   int global_version{0};
   size_t chksgn_counter = 0;
   std::unique_ptr<ParentVmState> parent = nullptr;
+  bool sbs_restore_parent{false};
+  int sbs_res{0};
+  bool sbs_running{false};
 
  public:
   enum {
@@ -243,6 +246,9 @@ class VmState final : public VmStateInterface {
   td::BitArray<256> get_final_state_hash(int exit_code) const;
   int step();
   int run();
+  int sbs_init();
+  td::optional<int> sbs_step();
+  int sbs_exit_code();
   Stack& get_stack() {
     return stack.write();
   }
@@ -413,6 +419,7 @@ class VmState final : public VmStateInterface {
  private:
   void init_cregs(bool same_c3 = false, bool push_0 = true);
   int run_inner();
+  td::optional<int> sbs_step_inner();
 };
 
 struct ParentVmState {
