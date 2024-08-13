@@ -94,7 +94,7 @@ td::Result<bool> TransactionEmulator::emulate_transaction_sbs(
       utime = (unsigned)std::time(nullptr);
     }
 
-    auto fetch_res = block::FetchConfigParams::fetch_config_params(config_, prev_blocks_info_, &old_mparams,
+    auto fetch_res = block::FetchConfigParams::fetch_config_params(*config_, prev_blocks_info_, &old_mparams,
                                                                    &storage_prices_, &storage_phase_cfg_,
                                                                    &rand_seed_, &compute_phase_cfg_,
                                                                    &action_phase_cfg_, &masterchain_create_fee,
