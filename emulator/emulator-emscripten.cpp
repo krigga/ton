@@ -286,6 +286,10 @@ void *setup_sbs_get_method(const char *params, const char* stack, const char* co
     return tvm;
 }
 
+void destroy_tvm_emulator(void *tvm) {
+  tvm_emulator_destroy(tvm);
+}
+
 bool sbs_step(void *tvm) {
   return tvm_emulator_sbs_step(tvm);
 }
