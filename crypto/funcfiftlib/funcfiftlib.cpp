@@ -72,7 +72,9 @@ td::Result<std::string> compile_internal(char *config_json) {
   result_obj("status", "ok");
   result_obj("codeBoc", td::base64_encode(boc));
   result_obj("fiftCode", outs.str());
-  result_obj("debugInfo", td::JsonRaw(debug_out.str()));
+  if (funC::with_debug_info) {
+    result_obj("debugInfo", td::JsonRaw(debug_out.str()));
+  }
   result_obj("codeHashHex", code_cell->get_hash().to_hex());
   result_obj.leave();
 
