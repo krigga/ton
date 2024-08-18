@@ -193,6 +193,10 @@ const char *em_sbs_stack(void *em) {
   return transaction_emulator_sbs_get_stack(em);
 }
 
+const char *em_sbs_c7(void *em) {
+  return transaction_emulator_sbs_get_c7(em);
+}
+
 const char *em_sbs_code_pos(void *em) {
   return transaction_emulator_sbs_get_code_pos(em);
 }
@@ -296,6 +300,10 @@ bool sbs_step(void *tvm) {
 
 const char *sbs_get_stack(void *tvm) {
   return tvm_emulator_sbs_get_stack(tvm);
+}
+
+const char *sbs_get_c7(void *tvm) {
+  return tvm_emulator_sbs_get_c7(tvm);
 }
 
 const char* sbs_get_code_pos(void *tvm) {

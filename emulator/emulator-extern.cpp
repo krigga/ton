@@ -370,6 +370,28 @@ const char *transaction_emulator_sbs_get_stack(void *tvm_emulator) {
   return strdup(boc_ok.c_str());
 }
 
+const char *transaction_emulator_sbs_get_c7(void *tvm_emulator) {
+  auto emulator = static_cast<emulator::TransactionEmulator *>(tvm_emulator);
+
+  vm::FakeVmStateLimits fstate(3500);  // limit recursive (de)serialization calls
+  vm::VmStateInterface::Guard guard(&fstate);
+
+  vm::StackEntry c7_entry(emulator->vm_sbs().get_c7());
+
+  vm::CellBuilder c7_cb;
+  if (!c7_entry.serialize(c7_cb)) {
+    ERROR_RESPONSE(PSTRING() << "Couldn't serialize c7");
+  }
+  auto result_stack_boc = cell_to_boc_b64(c7_cb.finalize());
+  if (result_stack_boc.is_error()) {
+    ERROR_RESPONSE(PSTRING() << "Couldn't serialize c7 cell: " << result_stack_boc.move_as_error().to_string());
+  }
+
+  auto boc_ok = result_stack_boc.move_as_ok();
+
+  return strdup(boc_ok.c_str());
+}
+
 const char *transaction_emulator_sbs_get_code_pos(void *tvm_emulator) {
   auto emulator = static_cast<emulator::TransactionEmulator *>(tvm_emulator);
 
@@ -724,6 +746,28 @@ const char *tvm_emulator_sbs_get_stack(void *tvm_emulator) {
   auto result_stack_boc = cell_to_boc_b64(stack_cb.finalize());
   if (result_stack_boc.is_error()) {
     ERROR_RESPONSE(PSTRING() << "Couldn't serialize stack cell: " << result_stack_boc.move_as_error().to_string());
+  }
+
+  auto boc_ok = result_stack_boc.move_as_ok();
+
+  return strdup(boc_ok.c_str());
+}
+
+const char *tvm_emulator_sbs_get_c7(void *tvm_emulator) {
+  auto emulator = static_cast<emulator::TvmEmulator *>(tvm_emulator);
+
+  vm::FakeVmStateLimits fstate(3500);  // limit recursive (de)serialization calls
+  vm::VmStateInterface::Guard guard(&fstate);
+
+  vm::StackEntry c7_entry(emulator->smc_.sbs_vm.get_c7());
+
+  vm::CellBuilder c7_cb;
+  if (!c7_entry.serialize(c7_cb)) {
+    ERROR_RESPONSE(PSTRING() << "Couldn't serialize c7");
+  }
+  auto result_stack_boc = cell_to_boc_b64(c7_cb.finalize());
+  if (result_stack_boc.is_error()) {
+    ERROR_RESPONSE(PSTRING() << "Couldn't serialize c7 cell: " << result_stack_boc.move_as_error().to_string());
   }
 
   auto boc_ok = result_stack_boc.move_as_ok();
