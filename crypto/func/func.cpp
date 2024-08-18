@@ -201,38 +201,62 @@ int generate_output(std::ostream &outs, std::ostream &errs, std::ostream &debug_
   }
 
   if (with_debug_info) {
-    td::JsonBuilder jsonb;
-    auto arrb = jsonb.enter_array();
-    for (auto di : debug_infos) {
-      auto vb = arrb.enter_value();
-      auto ob = vb.enter_object();
-      ob("file", di.loc_file);
-      ob("line", (td::int64) di.loc_line);
-      ob("pos", (td::int64) di.loc_pos);
+    td::JsonBuilder _jb;
+    auto objb = _jb.enter_object();
 
-      td::JsonBuilder varb;
-      auto vararrb = varb.enter_array();
-      for (auto varstr : di.vars) {
-        vararrb << varstr;
-      }
-      vararrb.leave();
+    {
+      td::JsonBuilder jsonb;
+      auto arrb = jsonb.enter_array();
+      for (auto glob_var : glob_vars) {
+        auto vb = arrb.enter_value();
+        auto ob = vb.enter_object();
 
-      td::JsonRaw vararrs(varb.string_builder().as_cslice());
+        ob("name", glob_var->name());
+      }
+      arrb.leave();
 
-      if (!di.ret) {
-        ob("vars", vararrs);
-      }
-
-      ob("func", di.func_name);
-      if (di.first_stmt) {
-        ob("first_stmt", td::JsonTrue());
-      }
-      if (di.ret) {
-        ob("ret", td::JsonTrue());
-      }
+      objb("globals", td::JsonRaw(jsonb.string_builder().as_cslice()));
     }
-    arrb.leave();
-    debug_out << jsonb.string_builder().as_cslice().str();
+
+    {
+      td::JsonBuilder jsonb;
+      auto arrb = jsonb.enter_array();
+      for (auto di : debug_infos) {
+        auto vb = arrb.enter_value();
+        auto ob = vb.enter_object();
+        ob("file", di.loc_file);
+        ob("line", (td::int64) di.loc_line);
+        ob("pos", (td::int64) di.loc_pos);
+
+        td::JsonBuilder varb;
+        auto vararrb = varb.enter_array();
+        for (auto varstr : di.vars) {
+          vararrb << varstr;
+        }
+        vararrb.leave();
+
+        td::JsonRaw vararrs(varb.string_builder().as_cslice());
+
+        if (!di.ret) {
+          ob("vars", vararrs);
+        }
+
+        ob("func", di.func_name);
+        if (di.first_stmt) {
+          ob("first_stmt", td::JsonTrue());
+        }
+        if (di.ret) {
+          ob("ret", td::JsonTrue());
+        }
+      }
+      arrb.leave();
+
+      objb("locations", td::JsonRaw(jsonb.string_builder().as_cslice()));
+    }
+
+    objb.leave();
+
+    debug_out << _jb.string_builder().as_cslice().str();
   }
 
   return errors;
