@@ -978,7 +978,7 @@ void combine_parallel(val& x, const val y) {
 }
 }  // namespace blk_fl
 
-void insert_debug_info(Lexer& lex, CodeBlob& code, bool first_stmt, bool ret) {
+void insert_debug_info(Lexer& lex, CodeBlob& code, bool first_stmt, bool ret, bool is_catch = false) {
   if (with_debug_info) {
     auto& op = code.emplace_back(lex.cur().loc, Op::_DebugInfo);
     op.simple_int_const = (int) debug_infos.size();
@@ -995,6 +995,7 @@ void insert_debug_info(Lexer& lex, CodeBlob& code, bool first_stmt, bool ret) {
     info.func_name = code.name;
     info.first_stmt = first_stmt;
     info.ret = ret;
+    info.is_catch = is_catch;
     debug_infos.push_back(info);
   }
 }
@@ -1036,7 +1037,10 @@ blk_fl::val parse_implicit_ret_stmt(Lexer& lex, CodeBlob& code) {
 
 blk_fl::val parse_stmt(Lexer& lex, CodeBlob& code);
 
-blk_fl::val parse_block_stmt(Lexer& lex, CodeBlob& code, bool no_new_scope = false) {
+blk_fl::val parse_block_stmt(Lexer& lex, CodeBlob& code, bool no_new_scope = false, bool is_catch = false) {
+  if (is_catch) {
+    insert_debug_info(lex, code, false, false, true);
+  }
   lex.expect('{');
   if (!no_new_scope) {
     sym::open_scope(lex);
@@ -1157,7 +1161,7 @@ blk_fl::val parse_try_catch_stmt(Lexer& lex, CodeBlob& code) {
   expr->define_new_vars(code);
   try_catch_op.left = expr->pre_compile(code);
   func_assert(try_catch_op.left.size() == 2 || try_catch_op.left.size() == 1);
-  blk_fl::val res1 = parse_block_stmt(lex, code);
+  blk_fl::val res1 = parse_block_stmt(lex, code, false, true);
   sym::close_scope(lex);
   code.close_pop_cur(lex.cur().loc);
   blk_fl::combine_parallel(res0, res1);

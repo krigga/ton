@@ -1747,6 +1747,7 @@ struct DebugInfo {
   std::string func_name;
   bool first_stmt;
   bool ret;
+  bool is_catch;
 };
 
 extern int verbosity, indent, opt_level;

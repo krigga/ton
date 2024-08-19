@@ -237,7 +237,7 @@ int generate_output(std::ostream &outs, std::ostream &errs, std::ostream &debug_
 
         td::JsonRaw vararrs(varb.string_builder().as_cslice());
 
-        if (!di.ret) {
+        if (!di.ret && !di.is_catch) {
           ob("vars", vararrs);
         }
 
@@ -247,6 +247,9 @@ int generate_output(std::ostream &outs, std::ostream &errs, std::ostream &debug_
         }
         if (di.ret) {
           ob("ret", td::JsonTrue());
+        }
+        if (di.is_catch) {
+          ob("is_catch", td::JsonTrue());
         }
       }
       arrb.leave();
