@@ -630,12 +630,18 @@ int VmState::loop_while(Ref<Continuation> cond, Ref<Continuation> body, Ref<Cont
 int OrdCont::jump(VmState* st) const & {
   st->adjust_cr(data.save);
   st->set_code(code, data.cp);
+  if (param >= 0) {
+    st->set_cont_param(param);
+  }
   return 0;
 }
 
 int OrdCont::jump_w(VmState* st) & {
   st->adjust_cr(std::move(data.save));
   st->set_code(std::move(code), data.cp);
+  if (param >= 0) {
+    st->set_cont_param(param);
+  }
   return 0;
 }
 

@@ -602,7 +602,7 @@ int exec_dict_get_exec(VmState* st, unsigned args) {
   if (dict.integer_key_simple(idx, n, !(args & 1), td::BitPtr{buffer}, true)) {
     auto value = dict.lookup(td::BitPtr{buffer}, n);
     if (value.not_null()) {
-      Ref<OrdCont> cont{true, std::move(value), st->get_cp()};
+      Ref<OrdCont> cont{true, std::move(value), st->get_cp(), st->get_cont_param()};
       return (args & 2) ? st->call(std::move(cont)) : st->jump(std::move(cont));
     }
   }
@@ -685,7 +685,7 @@ int exec_pfx_dict_get(VmState* st, int op, const char* name_suff) {
   if (op == 1) {
     return 0;
   }
-  Ref<OrdCont> cont{true, std::move(res.first), st->get_cp()};
+  Ref<OrdCont> cont{true, std::move(res.first), st->get_cp(), st->get_cont_param()};
   return op & 1 ? st->call(std::move(cont)) : st->jump(std::move(cont));
 }
 
@@ -714,7 +714,7 @@ int exec_const_pfx_dict_switch(VmState* st, CellSlice& cs, unsigned args, int pf
   } else {
     stack.push_cellslice(cs1.write().fetch_subslice(res.second));
     stack.push_cellslice(std::move(cs1));
-    Ref<OrdCont> cont{true, std::move(res.first), st->get_cp()};
+    Ref<OrdCont> cont{true, std::move(res.first), st->get_cp(), st->get_cont_param()};
     return st->jump(std::move(cont));
   }
 }

@@ -47,7 +47,7 @@ int exec_push_ref(VmState* st, CellSlice& cs, int mode, int pfx_bits) {
       stack.push_cellslice(load_cell_slice_ref(std::move(cell)));
       break;
     case 2:
-      stack.push_cont(Ref<OrdCont>{true, load_cell_slice_ref(std::move(cell)), st->get_cp()});
+      stack.push_cont(Ref<OrdCont>{true, load_cell_slice_ref(std::move(cell)), st->get_cp(), st->get_cont_param()});
       break;
   }
   return 0;
@@ -177,7 +177,7 @@ int exec_push_cont(VmState* st, CellSlice& cs, unsigned args, int pfx_bits) {
 
   VM_LOG(st) << "execute PUSHCONT " << slice;
 
-  stack.push_cont(Ref<OrdCont>{true, std::move(slice), st->get_cp()});
+  stack.push_cont(Ref<OrdCont>{true, std::move(slice), st->get_cp(), st->get_cont_param()});
   return 0;
 }
 
@@ -210,7 +210,7 @@ int exec_push_cont_simple(VmState* st, CellSlice& cs, unsigned args, int pfx_bit
   cs.advance(pfx_bits);
   auto slice = cs.fetch_subslice(data_bits);
   VM_LOG(st) << "execute PUSHCONT " << slice;
-  stack.push_cont(Ref<OrdCont>{true, std::move(slice), st->get_cp()});
+  stack.push_cont(Ref<OrdCont>{true, std::move(slice), st->get_cp(), st->get_cont_param()});
   return 0;
 }
 

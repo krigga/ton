@@ -108,6 +108,8 @@ class VmState final : public VmStateInterface {
   int sbs_res{0};
   bool sbs_running{false};
 
+  int cont_param = 0;
+
  public:
   enum {
     cell_load_gas_price = 100,
@@ -249,6 +251,12 @@ class VmState final : public VmStateInterface {
   int sbs_init();
   td::optional<int> sbs_step();
   int sbs_exit_code();
+  int get_cont_param() {
+    return cont_param;
+  }
+  void set_cont_param(int param) {
+    cont_param = param;
+  }
   Stack& get_stack() {
     return stack.write();
   }
@@ -395,7 +403,7 @@ class VmState final : public VmStateInterface {
     return stop_on_accept_message;
   }
   Ref<OrdCont> ref_to_cont(Ref<Cell> cell) const {
-    return td::make_ref<OrdCont>(load_cell_slice_ref(std::move(cell)), get_cp());
+    return td::make_ref<OrdCont>(load_cell_slice_ref(std::move(cell)), get_cp(), cont_param);
   }
   td::optional<td::Bits256> get_missing_library() const {
     return missing_library;

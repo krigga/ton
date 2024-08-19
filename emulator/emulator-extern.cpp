@@ -392,6 +392,18 @@ const char *transaction_emulator_sbs_get_c7(void *tvm_emulator) {
   return strdup(boc_ok.c_str());
 }
 
+int transaction_emulator_sbs_get_cont_param(void *tvm_emulator) {
+  auto emulator = static_cast<emulator::TransactionEmulator *>(tvm_emulator);
+
+  return emulator->vm_sbs().get_cont_param();
+}
+
+void transaction_emulator_sbs_set_cont_param(void *tvm_emulator, int param) {
+  auto emulator = static_cast<emulator::TransactionEmulator *>(tvm_emulator);
+
+  emulator->vm_sbs().set_cont_param(param);
+}
+
 const char *transaction_emulator_sbs_get_code_pos(void *tvm_emulator) {
   auto emulator = static_cast<emulator::TransactionEmulator *>(tvm_emulator);
 
@@ -773,6 +785,18 @@ const char *tvm_emulator_sbs_get_c7(void *tvm_emulator) {
   auto boc_ok = result_stack_boc.move_as_ok();
 
   return strdup(boc_ok.c_str());
+}
+
+int tvm_emulator_sbs_get_cont_param(void *tvm_emulator) {
+  auto emulator = static_cast<emulator::TvmEmulator *>(tvm_emulator);
+
+  return emulator->smc_.sbs_vm.get_cont_param();
+}
+
+void tvm_emulator_sbs_set_cont_param(void *tvm_emulator, int param) {
+  auto emulator = static_cast<emulator::TvmEmulator *>(tvm_emulator);
+
+  emulator->smc_.sbs_vm.set_cont_param(param);
 }
 
 const char* tvm_emulator_sbs_get_code_pos(void *tvm_emulator) {

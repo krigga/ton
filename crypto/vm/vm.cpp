@@ -81,7 +81,7 @@ void VmState::init_cregs(bool same_c3, bool push_0) {
   cr.set_c1(quit1);
   cr.set_c2(Ref<ExcQuitCont>{true});
   if (same_c3) {
-    cr.set_c3(Ref<OrdCont>{true, code, cp});
+    cr.set_c3(Ref<OrdCont>{true, code, cp, cont_param});
     if (push_0) {
       VM_LOG(this) << "implicit PUSH 0 at start\n";
       get_stack().push_smallint(0);
@@ -147,14 +147,14 @@ int VmState::call(Ref<Continuation> cont) {
       return call(std::move(cont), -1, -1);
     }
     // create return continuation, to be stored into new c0
-    Ref<OrdCont> ret = Ref<OrdCont>{true, std::move(code), cp};
+    Ref<OrdCont> ret = Ref<OrdCont>{true, std::move(code), cp, cont_param};
     ret.unique_write().get_cdata()->save.set_c0(std::move(cr.c[0]));
     cr.set_c0(
         std::move(ret));  // set c0 to its final value before switching to cont; notice that cont.save.c0 is not set
     return jump_to(std::move(cont));
   }
   // create return continuation, to be stored into new c0
-  Ref<OrdCont> ret = Ref<OrdCont>{true, std::move(code), cp};
+  Ref<OrdCont> ret = Ref<OrdCont>{true, std::move(code), cp, cont_param};
   ret.unique_write().get_cdata()->save.set_c0(std::move(cr.c[0]));
   // general implementation of a simple call
   cr.set_c0(std::move(ret));  // set c0 to its final value before switching to cont; notice that cont.save.c0 is not set
@@ -215,7 +215,7 @@ int VmState::call(Ref<Continuation> cont, int pass_args, int ret_args) {
       stack.clear();
     }
     // create return continuation using the remainder of current stack
-    Ref<OrdCont> ret = Ref<OrdCont>{true, std::move(code), cp, std::move(stack), ret_args};
+    Ref<OrdCont> ret = Ref<OrdCont>{true, std::move(code), cp, std::move(stack), ret_args, cont_param};
     ret.unique_write().get_cdata()->save.set_c0(std::move(old_c0));
     Ref<OrdCont> ord_cont = static_cast<Ref<OrdCont>>(cont);
     set_stack(std::move(new_stk));
@@ -236,7 +236,7 @@ int VmState::call(Ref<Continuation> cont, int pass_args, int ret_args) {
       new_stk = std::move(stack);
     }
     // create return continuation using the remainder of the current stack
-    Ref<OrdCont> ret = Ref<OrdCont>{true, std::move(code), cp, std::move(stack), ret_args};
+    Ref<OrdCont> ret = Ref<OrdCont>{true, std::move(code), cp, std::move(stack), ret_args, cont_param};
     ret.unique_write().get_cdata()->save.set_c0(std::move(cr.c[0]));
     set_stack(std::move(new_stk));
     cr.set_c0(std::move(ret));  // ??? if codepage of code in ord_cont is unknown, will end up with incorrect c0
@@ -365,7 +365,7 @@ Ref<OrdCont> VmState::extract_cc(int save_cr, int stack_copy, int cc_args) {
   } else {
     new_stk = Ref<Stack>{true};
   }
-  Ref<OrdCont> cc = Ref<OrdCont>{true, std::move(code), cp, std::move(stack), cc_args};
+  Ref<OrdCont> cc = Ref<OrdCont>{true, std::move(code), cp, std::move(stack), cc_args, cont_param};
   stack = std::move(new_stk);
   if (save_cr & 7) {
     ControlData* cdata = cc.unique_write().get_cdata();
@@ -462,7 +462,7 @@ int VmState::step() {
     auto ref_cell = code->prefetch_ref();
     VM_LOG_MASK(this, vm::VmLog::ExecLocation) << "code cell hash: " << ref_cell->get_hash().to_hex() << " offset: 0";
     consume_gas_chk(implicit_jmpref_gas_price);
-    Ref<Continuation> cont = Ref<OrdCont>{true, load_cell_slice_ref(std::move(ref_cell)), get_cp()};
+    Ref<Continuation> cont = Ref<OrdCont>{true, load_cell_slice_ref(std::move(ref_cell)), get_cp(), cont_param};
     return jump(std::move(cont));
   } else {
     VM_LOG(this) << "execute implicit RET";

@@ -197,6 +197,14 @@ const char *em_sbs_c7(void *em) {
   return transaction_emulator_sbs_get_c7(em);
 }
 
+int em_sbs_get_cont_param(void *tvm) {
+  return transaction_emulator_sbs_get_cont_param(tvm);
+}
+
+void em_sbs_set_cont_param(void *tvm, int param) {
+  return transaction_emulator_sbs_set_cont_param(tvm, param);
+}
+
 const char *em_sbs_code_pos(void *em) {
   return transaction_emulator_sbs_get_code_pos(em);
 }
@@ -304,6 +312,14 @@ const char *sbs_get_stack(void *tvm) {
 
 const char *sbs_get_c7(void *tvm) {
   return tvm_emulator_sbs_get_c7(tvm);
+}
+
+int sbs_get_cont_param(void *tvm) {
+  return tvm_emulator_sbs_get_cont_param(tvm);
+}
+
+void sbs_set_cont_param(void *tvm, int param) {
+  return tvm_emulator_sbs_set_cont_param(tvm, param);
 }
 
 const char* sbs_get_code_pos(void *tvm) {

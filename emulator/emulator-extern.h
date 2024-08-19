@@ -129,6 +129,10 @@ EMULATOR_EXPORT const char *transaction_emulator_sbs_get_stack(void *tvm_emulato
 
 EMULATOR_EXPORT const char *transaction_emulator_sbs_get_c7(void *tvm_emulator);
 
+EMULATOR_EXPORT int transaction_emulator_sbs_get_cont_param(void *tvm_emulator);
+
+EMULATOR_EXPORT void transaction_emulator_sbs_set_cont_param(void *tvm_emulator, int param);
+
 EMULATOR_EXPORT const char *transaction_emulator_sbs_get_code_pos(void *tvm_emulator);
 
 /**
@@ -255,6 +259,10 @@ EMULATOR_EXPORT bool tvm_emulator_sbs_step(void *tvm_emulator);
 EMULATOR_EXPORT const char *tvm_emulator_sbs_get_stack(void *tvm_emulator);
 
 EMULATOR_EXPORT const char *tvm_emulator_sbs_get_c7(void *tvm_emulator);
+
+EMULATOR_EXPORT int tvm_emulator_sbs_get_cont_param(void *tvm_emulator);
+
+EMULATOR_EXPORT void tvm_emulator_sbs_set_cont_param(void *tvm_emulator, int param);
 
 EMULATOR_EXPORT const char* tvm_emulator_sbs_get_code_pos(void *tvm_emulator);
 

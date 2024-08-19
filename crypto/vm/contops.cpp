@@ -733,7 +733,7 @@ int exec_return_varargs(VmState* st) {
 int exec_bless(VmState* st) {
   Stack& stack = st->get_stack();
   VM_LOG(st) << "execute BLESS\n";
-  stack.push_cont(Ref<OrdCont>{true, stack.pop_cellslice(), st->get_cp()});
+  stack.push_cont(Ref<OrdCont>{true, stack.pop_cellslice(), st->get_cp(), st->get_cont_param()});
   return 0;
 }
 
@@ -743,7 +743,7 @@ int exec_bless_args_common(VmState* st, int copy, int more) {
   auto cs = stack.pop_cellslice();
   auto new_stk = stack.split_top(copy);
   st->consume_stack_gas(new_stk);
-  stack.push_cont(Ref<OrdCont>{true, std::move(cs), st->get_cp(), std::move(new_stk), more});
+  stack.push_cont(Ref<OrdCont>{true, std::move(cs), st->get_cp(), std::move(new_stk), more, st->get_cont_param()});
   return 0;
 }
 
@@ -787,7 +787,7 @@ int exec_bless_pop_c3(VmState* st) {
   Stack& stack = st->get_stack();
   VM_LOG(st) << "execute CTOSBLESSPOPc3";
   stack.check_underflow(1);
-  throw_typechk(st->set_c(3, Ref<OrdCont>{true, vm::load_cell_slice_ref(stack.pop_cell()), st->get_cp()}));
+  throw_typechk(st->set_c(3, Ref<OrdCont>{true, vm::load_cell_slice_ref(stack.pop_cell()), st->get_cp(), st->get_cont_param()}));
   return 0;
 }
 

@@ -161,6 +161,8 @@ struct ControlData {
 
 class Continuation : public td::CntObject {
  public:
+  int param = 0;
+
   virtual int jump(VmState* st) const & = 0;
   virtual int jump_w(VmState* st) &;
   virtual ControlData* get_cdata() {
@@ -331,17 +333,18 @@ class ArgContExt : public Continuation {
 class OrdCont : public Continuation {
   ControlData data;
   Ref<CellSlice> code;
+  int param = -1;
   friend class VmState;
 
  public:
   OrdCont() : data(), code() {
   }
   //OrdCont(Ref<CellSlice> _code) : data(), code(std::move(_code)) {}
-  OrdCont(Ref<CellSlice> _code, int _cp) : data(_cp), code(std::move(_code)) {
+  OrdCont(Ref<CellSlice> _code, int _cp, int param = -1) : data(_cp), code(std::move(_code)), param(param) {
   }
   //OrdCont(Ref<CellSlice> _code, Ref<Stack> _stack) : data(std::move(_stack)), code(std::move(_code)) {}
-  OrdCont(Ref<CellSlice> _code, int _cp, Ref<Stack> _stack, int nargs = -1)
-      : data(_cp, std::move(_stack), nargs), code(std::move(_code)) {
+  OrdCont(Ref<CellSlice> _code, int _cp, Ref<Stack> _stack, int nargs = -1, int param = -1)
+      : data(_cp, std::move(_stack), nargs), code(std::move(_code)), param(param) {
   }
   OrdCont(Ref<CellSlice> _code, const ControlData& _cdata) : data(_cdata), code(std::move(_code)) {
   }
