@@ -31,7 +31,9 @@ false @was-split !
 { false @was-split ! `normal @endblk } : }>
 { }> b> } : }>c
 { }>c <s } : }>s
-{ @currentdebugmarks @ depth 6 < dup { drop 5 pick null? not } ifnot // codeb debugmarks isnottoplevel
+{ @currentdebugmarks @ depth 6 < dup
+  { drop 5 pick null? not // this is a bad way to detect top level proc defs. too bad!
+  } ifnot // codeb debugmarks isnottoplevel
   rot b> <s over // debugmarks isnottoplevel codes isnottoplevel
   { @zcount @cut-zeroes rot // isnottoplevel cutcodes uncutdebugmarks
     @marksize { ref@ dictnew swap // dictmapb cutdebugmarks uncutdebugmarks
