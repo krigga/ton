@@ -4,6 +4,22 @@ namespace Asm
 Asm definitions
 "0.4.5" constant asm-fif-version
 
+32 constant @marksize
+
+variable @alldebugmarks
+variable @debugmarks
+variable @currentdebugmarks
+
+// markid offset
+{ over @debugmarks @ @marksize udict@ { ref@ } { dictnew } cond // markid offset markiddict
+  <b -rot 10 b>udict! { abort"could not set debug mark" } ifnot // markid markiddict
+  <b swap ref, // markid markiddictb
+  swap @debugmarks @ @marksize b>udict! { abort"could not set debug mark" } ifnot @debugmarks ! } : @adddebugmark
+{ over bbits @adddebugmark } : DEBUGMARK
+
+32 constant @zcount
+{ u@?+ { swap abort"first bits are not zeroes" } if } : @cut-zeroes
+
 variable @atend
 variable @was-split
 false @was-split !
@@ -15,8 +31,22 @@ false @was-split !
 { false @was-split ! `normal @endblk } : }>
 { }> b> } : }>c
 { }>c <s } : }>s
-{ @atend @ 2 { true @was-split ! @atend ! rot b> ref, swap @endblk } does @atend ! <b } : @|
-{ @atend @ 3 { @atend ! 2swap rot execute } does @atend ! <b } : @doafter<{
+{ @currentdebugmarks @ depth 6 < dup { drop 5 pick null? not } ifnot // codeb debugmarks isnottoplevel
+  rot b> <s over // debugmarks isnottoplevel codes isnottoplevel
+  { @zcount @cut-zeroes rot // isnottoplevel cutcodes uncutdebugmarks
+    @marksize { ref@ dictnew swap // dictmapb cutdebugmarks uncutdebugmarks
+                10 { drop // cutdebugmarks uncutdebugmark
+                     @zcount - <b swap rot // emptyb cutdebugmark cutdebugmarks
+                     10 b>udict! { abort"could not add subbed debug marks" } ifnot true }
+                dictforeach drop // dictmapb cutdebugmarks
+                ref, true } dictmap -rot } ifnot // cutdebugmarks isnottoplevel cutcodes
+  -rot // cutcodes cutdebugmarks isnottoplevel
+  <b swap 1 i, // cutcodes cutdebugmarks tldebugmarksb
+  swap dict, // cutcodes tldebugmarksb
+  swap shash 256 B>u@ // tldebugmarksb cutcodehash
+  @alldebugmarks @ 256 b>udict! { abort"could not add to all debug marks" } ifnot @alldebugmarks ! } : @handledebugmarks
+{ @atend @ @debugmarks @ 3 { true @was-split ! @debugmarks @ @currentdebugmarks ! @debugmarks ! @atend ! rot dup @handledebugmarks b> ref, swap @endblk } does @atend ! dictnew @debugmarks ! <b } : @|
+{ @atend @ @debugmarks @ 4 { @debugmarks @ @currentdebugmarks ! @debugmarks ! @atend ! 2swap over @handledebugmarks rot execute } does @atend ! dictnew @debugmarks ! <b } : @doafter<{
 { over brembits <= } : @havebits
 { rot + -rot + swap } : pair+
 { rot >= -rot <= and } : 2x<=
@@ -299,11 +329,26 @@ x{8A} @Defop(ref) PUSHREFCONT
   bbitrefs rot bbitrefs pair+ swap 32 + swap @havebitrefs nip
   } cond
 } : @two-cont-fit?
+// initoffset fromhash
+{ @alldebugmarks @ 256 udict@ { // initoffset tldebugmarks
+                                1 i@+ swap drop ref@? { // initoffset debugmarks
+                                                                               @marksize { // initoffset markid offsetsdicts
+                                                                                                         ref@ 10 { // initoffset markid offset emptys
+                                                                                                                                drop 2 pick + // initoffset markid addedoffset
+                                                                                                                                over swap @adddebugmark true }
+                                                                                                         dictforeach // initoffset markid true
+                                                                                                         swap drop }
+                                                                               dictforeach }
+                                if }
+                              if // initoffset true
+                              2drop
+} : @readddebugmarks
+{ over bbits over b> hashu @readddebugmarks } : @pushcontreadd
 { 2dup @cont-fits? not
   { b> PUSHREFCONT }
   { swap over bbitrefs 2dup 120 0 2x<=
-    { drop swap x{9} s, swap 3 >> 4 u, swap b+ }
-    { rot x{8F_} s, swap 2 u, swap 3 >> 7 u, swap b+ } cond
+    { drop swap x{9} s, swap 3 >> 4 u, swap @pushcontreadd b+ }
+    { rot x{8F_} s, swap 2 u, swap 3 >> 7 u, swap @pushcontreadd b+ } cond
   } cond
 } dup : PUSHCONT : CONT
 { }> PUSHCONT } : }>CONT
@@ -1058,7 +1103,7 @@ x{EDFB} @Defop SAMEALTSAVE
 //
 // inline support
 { dup sbits
-   { @addop }
+   { dup shash 256 B>u@ -rot dup sbits -rot @addop dup bbits rot - rot @readddebugmarks }
    {
     dup srefs // 
       { ref@ CALLREF }
@@ -1481,7 +1526,6 @@ variable @gvarcnt
 variable @parent-state
 variable asm-mode  1 asm-mode !
 19 constant @procdictkeylen
-32 constant @zcount
 { pair @proclist @ cons @proclist ! } : @proclistadd
 { @procinfo @ @procdictkeylen idict@ { 16 i@ } { 0 } cond } : @procinfo@
 { <b rot 16 i, swap @procinfo @ @procdictkeylen b>idict!
@@ -1534,7 +1578,6 @@ Fift-wordlist dup @oldcurrent ! @oldctx !
 { -1000 @def-proc } : PROCINLINE
 { @procdict @ @procdictkeylen idict@ abort"procedure already defined"
 } : @fail-ifdef
-{ u@?+ { swap abort"first bits are not zeroes" } if } : @cut-zeroes
 { over @fail-ifdef
   2 { rot @normal? rot b> <s @zcount @cut-zeroes swap @def-proc drop } does
   null swap @doafter<{ 0 @zcount u,
@@ -1588,6 +1631,8 @@ forget @proclist  forget @proccnt
 { }END <{ SETCP0 swap @procdictkeylen DICTPUSHCONST DICTIGETJMPZ 11 THROWARG }> } : }END>
 { }END> b> } : }END>c
 { }END>c <s } : }END>s
+
+{ }END>c @alldebugmarks @ } : }END>cd
 
 0 constant recv_internal
 -1 constant recv_external
