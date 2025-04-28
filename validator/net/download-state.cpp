@@ -52,12 +52,7 @@ DownloadState::DownloadState(BlockIdExt block_id, BlockIdExt masterchain_block_i
 
 void DownloadState::abort_query(td::Status reason) {
   if (promise_) {
-    if (reason.code() == ErrorCode::notready || reason.code() == ErrorCode::timeout) {
-      VLOG(FULL_NODE_DEBUG) << "failed to download state " << block_id_ << " from " << download_from_ << ": " << reason;
-    } else {
-      VLOG(FULL_NODE_NOTICE) << "failed to download state " << block_id_ << " from " << download_from_ << ": "
-                             << reason;
-    }
+    LOG(WARNING) << "failed to download state " << block_id_.to_str() << " from " << download_from_ << ": " << reason;
     promise_.set_error(std::move(reason));
   }
   stop();
@@ -75,8 +70,22 @@ void DownloadState::finish_query() {
 }
 
 void DownloadState::start_up() {
+  status_ = ProcessStatus(validator_manager_, "process.download_state_net");
   alarm_timestamp() = timeout_;
 
+  td::actor::send_closure(validator_manager_, &ValidatorManagerInterface::get_persistent_state, block_id_,
+                          masterchain_block_id_,
+                          [SelfId = actor_id(this), block_id = block_id_](td::Result<td::BufferSlice> R) {
+                            if (R.is_error()) {
+                              td::actor::send_closure(SelfId, &DownloadState::get_block_handle);
+                            } else {
+                              LOG(WARNING) << "got block state from disk: " << block_id.to_str();
+                              td::actor::send_closure(SelfId, &DownloadState::got_block_state, R.move_as_ok());
+                            }
+                          });
+}
+
+void DownloadState::get_block_handle() {
   auto P = td::PromiseCreator::lambda([SelfId = actor_id(this)](td::Result<BlockHandle> R) {
     if (R.is_error()) {
       td::actor::send_closure(SelfId, &DownloadState::abort_query, R.move_as_error());
@@ -115,7 +124,7 @@ void DownloadState::got_block_handle(BlockHandle handle) {
 
 void DownloadState::got_node_to_download(adnl::AdnlNodeIdShort node) {
   download_from_ = node;
-  LOG(INFO) << "downloading state " << block_id_.to_str() << " from " << download_from_;
+  LOG(WARNING) << "downloading state " << block_id_.to_str() << " from " << download_from_;
 
   auto P = td::PromiseCreator::lambda([SelfId = actor_id(this)](td::Result<td::BufferSlice> R) mutable {
     if (R.is_error()) {
@@ -159,6 +168,7 @@ void DownloadState::got_block_state_description(td::BufferSlice data) {
           },
           [&, self = this](ton_api::tonNode_preparedState &f) {
             if (masterchain_block_id_.is_valid()) {
+              request_total_size();
               got_block_state_part(td::BufferSlice{}, 0);
               return;
             }
@@ -181,7 +191,37 @@ void DownloadState::got_block_state_description(td::BufferSlice data) {
                                       create_serialize_tl_object_suffix<ton_api::tonNode_query>(std::move(query)),
                                       td::Timestamp::in(3.0), std::move(P));
             }
+            status_.set_status(PSTRING() << block_id_.id.to_str() << " : download started");
           }));
+}
+
+void DownloadState::request_total_size() {
+  auto P = td::PromiseCreator::lambda([SelfId = actor_id(this)](td::Result<td::BufferSlice> R) {
+    if (R.is_error()) {
+      return;
+    }
+    auto res = fetch_tl_object<ton_api::tonNode_persistentStateSize>(R.move_as_ok(), true);
+    if (res.is_error()) {
+      return;
+    }
+    td::actor::send_closure(SelfId, &DownloadState::got_total_size, res.ok()->size_);
+  });
+
+  td::BufferSlice query = create_serialize_tl_object<ton_api::tonNode_getPersistentStateSize>(
+      create_tl_block_id(block_id_), create_tl_block_id(masterchain_block_id_));
+  if (client_.empty()) {
+    td::actor::send_closure(overlays_, &overlay::Overlays::send_query_via, download_from_, local_id_, overlay_id_,
+                            "get size", std::move(P), td::Timestamp::in(3.0), std::move(query),
+                            FullNode::max_state_size(), rldp_);
+  } else {
+    td::actor::send_closure(client_, &adnl::AdnlExtClient::send_query, "get size",
+                            create_serialize_tl_object_suffix<ton_api::tonNode_query>(std::move(query)),
+                            td::Timestamp::in(3.0), std::move(P));
+  }
+}
+
+void DownloadState::got_total_size(td::uint64 size) {
+  total_size_ = size;
 }
 
 void DownloadState::got_block_state_part(td::BufferSlice data, td::uint32 requested_size) {
@@ -190,14 +230,30 @@ void DownloadState::got_block_state_part(td::BufferSlice data, td::uint32 reques
   parts_.push_back(std::move(data));
 
   double elapsed = prev_logged_timer_.elapsed();
-  if (elapsed > 10.0) {
+  if (elapsed > 5.0) {
     prev_logged_timer_ = td::Timer();
-    LOG(INFO) << "downloading state " << block_id_.to_str() << ": total=" << sum_ << " ("
-              << td::format::as_size((td::uint64)(double(sum_ - prev_logged_sum_) / elapsed)) << "/s)";
+    auto speed = (td::uint64)((double)(sum_ - prev_logged_sum_) / elapsed);
+    td::StringBuilder sb;
+    sb << td::format::as_size(sum_);
+    if (total_size_) {
+      sb << "/" << td::format::as_size(total_size_);
+    }
+    sb << " (" << td::format::as_size(speed) << "/s";
+    if (total_size_) {
+      sb << ", " << td::StringBuilder::FixedDouble((double)sum_ / (double)total_size_ * 100.0, 2) << "%";
+      if (speed > 0 && total_size_ >= sum_) {
+        td::uint64 rem = (total_size_ - sum_) / speed;
+        sb << ", " << rem << "s remaining";
+      }
+    }
+    sb << ")";
+    LOG(WARNING) << "downloading state " << block_id_.to_str() << " : " << sb.as_cslice();
+    status_.set_status(PSTRING() << block_id_.id.to_str() << " : " << sb.as_cslice());
     prev_logged_sum_ = sum_;
   }
 
   if (last_part) {
+    status_.set_status(PSTRING() << block_id_.id.to_str() << " : " << sum_ << " bytes, finishing");
     td::BufferSlice res{td::narrow_cast<std::size_t>(sum_)};
     auto S = res.as_slice();
     for (auto &p : parts_) {
@@ -234,7 +290,7 @@ void DownloadState::got_block_state_part(td::BufferSlice data, td::uint32 reques
 
 void DownloadState::got_block_state(td::BufferSlice data) {
   state_ = std::move(data);
-  LOG(INFO) << "finished downloading state " << block_id_.to_str() << ": total=" << sum_;
+  LOG(WARNING) << "finished downloading state " << block_id_.to_str() << ": " << td::format::as_size(state_.size());
   finish_query();
 }
 

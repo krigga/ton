@@ -28,10 +28,10 @@ namespace fullnode {
 
 class FullNodeMasterImpl : public FullNodeMaster {
  public:
-  static constexpr td::uint32 proto_version() {
+  static constexpr td::uint32 proto_version_major() {
     return 1;
   }
-  static constexpr td::uint64 proto_capabilities() {
+  static constexpr td::uint32 proto_version_minor() {
     return 0;
   }
   void start_up() override;
@@ -66,6 +66,8 @@ class FullNodeMasterImpl : public FullNodeMaster {
                      td::Promise<td::BufferSlice> promise);
   void process_query(adnl::AdnlNodeIdShort src, ton_api::tonNode_preparePersistentState &query,
                      td::Promise<td::BufferSlice> promise);
+  void process_query(adnl::AdnlNodeIdShort src, ton_api::tonNode_getPersistentStateSize &query,
+                     td::Promise<td::BufferSlice> promise);
   void process_query(adnl::AdnlNodeIdShort src, ton_api::tonNode_getNextKeyBlockIds &query,
                      td::Promise<td::BufferSlice> promise);
   void process_query(adnl::AdnlNodeIdShort src, ton_api::tonNode_downloadZeroState &query,
@@ -79,6 +81,8 @@ class FullNodeMasterImpl : public FullNodeMaster {
   void process_query(adnl::AdnlNodeIdShort src, ton_api::tonNode_slave_sendExtMessage &query,
                      td::Promise<td::BufferSlice> promise);
   void process_query(adnl::AdnlNodeIdShort src, ton_api::tonNode_getArchiveInfo &query,
+                     td::Promise<td::BufferSlice> promise);
+  void process_query(adnl::AdnlNodeIdShort src, ton_api::tonNode_getShardArchiveInfo &query,
                      td::Promise<td::BufferSlice> promise);
   void process_query(adnl::AdnlNodeIdShort src, ton_api::tonNode_getArchiveSlice &query,
                      td::Promise<td::BufferSlice> promise);
