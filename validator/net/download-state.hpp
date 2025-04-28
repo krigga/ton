@@ -23,6 +23,8 @@
 #include "validator/validator.h"
 #include "adnl/adnl-ext-client.h"
 
+#include <stats-provider.h>
+
 namespace ton {
 
 namespace validator {
@@ -43,9 +45,12 @@ class DownloadState : public td::actor::Actor {
   void finish_query();
 
   void start_up() override;
+  void get_block_handle();
   void got_block_handle(BlockHandle handle);
   void got_node_to_download(adnl::AdnlNodeIdShort node);
   void got_block_state_description(td::BufferSlice data_description);
+  void request_total_size();
+  void got_total_size(td::uint64 size);
   void got_block_state_part(td::BufferSlice data, td::uint32 requested_size);
   void got_block_state(td::BufferSlice data);
 
@@ -74,6 +79,9 @@ class DownloadState : public td::actor::Actor {
 
   td::uint64 prev_logged_sum_ = 0;
   td::Timer prev_logged_timer_;
+  td::uint64 total_size_ = 0;
+
+  ProcessStatus status_;
 };
 
 }  // namespace fullnode
