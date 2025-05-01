@@ -361,7 +361,7 @@ td::Result<bool> TransactionEmulator::create_transaction_sbs(
     }
   }
 
-  if (!trans_->prepare_compute_phase_sbs(*compute_phase_cfg)) {
+  if (!trans_->prepare_compute_phase(*compute_phase_cfg, true)) {
     return td::Status::Error(-669,"cannot create compute phase of a new transaction for smart contract "s + acc->addr.to_hex());
   }
 

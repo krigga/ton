@@ -420,8 +420,7 @@ struct Transaction {
   Ref<vm::Stack> prepare_vm_stack(ComputePhase& cp);
   std::vector<Ref<vm::Cell>> compute_vm_libraries(const ComputePhaseConfig& cfg);
   bool run_precompiled_contract(const ComputePhaseConfig& cfg, precompiled::PrecompiledSmartContract& precompiled);
-  bool prepare_compute_phase(const ComputePhaseConfig& cfg);
-  bool prepare_compute_phase_sbs(const ComputePhaseConfig& cfg);
+  bool prepare_compute_phase(const ComputePhaseConfig& cfg, bool sbs = false);
   bool continue_compute_phase_sbs(const ComputePhaseConfig& cfg);
   bool prepare_action_phase(const ActionPhaseConfig& cfg);
   td::Status check_state_limits(const SizeLimitsConfig& size_limits, bool update_storage_stat = true);
