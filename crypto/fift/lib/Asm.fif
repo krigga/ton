@@ -341,7 +341,7 @@ x{8A} @Defop(ref) PUSHREFCONT
                                                                                                          dictforeach // initoffset markid true
                                                                                                          swap drop }
                                                                                dictforeach }
-                                if }
+                                { null } cond }
                               if // initoffset true
                               2drop
 } : @readddebugmarks
