@@ -25,6 +25,7 @@ class TransactionEmulator {
   std::unique_ptr<block::transaction::Transaction> trans_;
   block::Account account_;
   bool external_;
+  block::SerializeConfig serialize_config_;
 
 public:
   TransactionEmulator(std::shared_ptr<block::Config> config, int vm_log_verbosity = 0) :

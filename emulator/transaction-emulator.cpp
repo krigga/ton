@@ -81,7 +81,7 @@ td::Result<std::unique_ptr<TransactionEmulator::EmulationResult>> TransactionEmu
 td::Result<bool> TransactionEmulator::emulate_transaction_sbs(
     block::Account&& account, td::Ref<vm::Cell> msg_root, ton::UnixTime utime, ton::LogicalTime lt, int trans_type) {
 
-    account_ = account;
+    account_ = std::move(account);
 
     td::Ref<vm::Cell> old_mparams;
     td::RefInt256 masterchain_create_fee, basechain_create_fee;
@@ -96,7 +96,7 @@ td::Result<bool> TransactionEmulator::emulate_transaction_sbs(
     auto fetch_res = block::FetchConfigParams::fetch_config_params(*config_, prev_blocks_info_, &old_mparams,
                                                                    &storage_prices_, &storage_phase_cfg_,
                                                                    &rand_seed_, &compute_phase_cfg_,
-                                                                   &action_phase_cfg_, &masterchain_create_fee,
+                                                                   &action_phase_cfg_, &serialize_config_, &masterchain_create_fee,
                                                                    &basechain_create_fee, account_.workchain, utime);
     if(fetch_res.is_error()) {
         return fetch_res.move_as_error_prefix("cannot fetch config params ");
@@ -400,7 +400,7 @@ td::Result<std::unique_ptr<TransactionEmulator::EmulationResult>> TransactionEmu
     return std::make_unique<TransactionEmulator::EmulationExternalNotAccepted>(std::move(vm_log), vm_exit_code, 0); // TODO elapsed
   }
 
-  if (!trans->serialize()) {
+  if (!trans->serialize(serialize_config_)) {
     return td::Status::Error(-669,"cannot serialize new transaction for smart contract "s + trans->account.addr.to_hex());
   }
 
