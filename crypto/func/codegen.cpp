@@ -880,7 +880,7 @@ bool Op::generate_code_step(Stack& stack) {
     }
     case _DebugInfo: {
       std::ostringstream ops;
-      ops << "\"DI" << simple_int_const << "\" DEBUGSTR";
+      ops << simple_int_const << " DEBUGMARK";
       stack.o << ops.str();
       if (!debug_infos[simple_int_const].ret) {
         for (auto i : stack.s) {
